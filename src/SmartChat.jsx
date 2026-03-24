@@ -1,3 +1,4 @@
+// Updated: March 24, 2026 - Full version with contacts
 import { useState, useRef, useEffect } from "react";
 
 const uid = () => Math.random().toString(36).slice(2, 10);
