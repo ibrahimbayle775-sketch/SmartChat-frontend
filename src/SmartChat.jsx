@@ -54,8 +54,7 @@ const SEED_MESSAGES = {
   ],
 };
 
-const ME = { id: "me", name: "You (Dr. Amara Osei)", role: "lecturer" };
-
+// const ME = { id: "me", name: "You (Dr. Amara Osei)", role: "lecturer" };
 function Avatar({ label, color, size = 38 }) {
   return (
     <div style={{
