@@ -261,29 +261,35 @@ function ChatApp({ user, onLogout }) {
       .catch(err => console.error("Fetch error:", err));
   }, []);
 
-  // FIXED: loadMessages function - gets messages for the conversation
+  // Load messages function with sender/receiver filtering
   const loadMessages = async (otherUserId) => {
     if (!otherUserId || !user) return;
 
     try {
-      const response = await apiCall(`/api/load-messages/${otherUserId}`);
-      const data = await response.json();
+      const res = await apiCall(`/api/load-messages/${otherUserId}`);
+      const data = await res.json();
 
       if (!data.messages) return;
 
-      const formattedMessages = data.messages.map(msg => ({
-        id: msg.id,
-        from: msg.sender === user.id.toString() ? "me" : otherUserId,
-        text: msg.text,
-        time: msg.timestamp,
-        type: "text"
-      }));
-
-      formattedMessages.sort((a, b) => a.id - b.id);
+      const formatted = data.messages
+        .filter(msg =>
+          (msg.sender.toString() === user.id.toString() &&
+           msg.receiver.toString() === otherUserId.toString()) ||
+          (msg.sender.toString() === otherUserId.toString() &&
+           msg.receiver.toString() === user.id.toString())
+        )
+        .map(msg => ({
+          id: msg.id,
+          from: msg.sender.toString() === user.id.toString() ? "me" : "them",
+          text: msg.text,
+          time: msg.timestamp || now(),
+          type: "text"
+        }))
+        .sort((a, b) => a.id - b.id);
 
       setMessages(prev => ({
         ...prev,
-        [otherUserId]: formattedMessages
+        [otherUserId]: formatted
       }));
 
     } catch (err) {
@@ -323,7 +329,7 @@ function ChatApp({ user, onLogout }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
 
-  // FIXED: send function - saves message correctly
+  // Send message function
   const send = async (text) => {
     if (!text.trim() || !active.id) return;
 
@@ -335,6 +341,7 @@ function ChatApp({ user, onLogout }) {
       type: "text"
     };
 
+    // optimistic UI
     setMessages(prev => ({
       ...prev,
       [active.id]: [...(prev[active.id] ?? []), msg]
@@ -346,8 +353,8 @@ function ChatApp({ user, onLogout }) {
       await apiCall('/api/save-message', {
         method: 'POST',
         body: JSON.stringify({
-          conversation_id: active.id,
           sender: user.id.toString(),
+          receiver: active.id.toString(),
           text: text.trim()
         })
       });
@@ -356,6 +363,8 @@ function ChatApp({ user, onLogout }) {
 
     } catch (err) {
       console.error("Error saving message:", err);
+
+      // rollback if failed
       setMessages(prev => ({
         ...prev,
         [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
@@ -390,16 +399,20 @@ function ChatApp({ user, onLogout }) {
         <div style={{ flex: 1, overflowY: "auto" }}>
           {allUsers.filter(u => u.username !== user.username).map(otherUser => {
             const isActive = active.id === otherUser.id.toString();
-            const hasMessages = messages[otherUser.id] && messages[otherUser.id].length > 0;
-            const lastMsg = hasMessages ? messages[otherUser.id][messages[otherUser.id].length - 1] : null;
+            // FIXED: Use toString() for consistent key lookup
+            const hasMessages = messages[otherUser.id.toString()] && messages[otherUser.id.toString()].length > 0;
+            // FIXED: Use toString() for consistent key lookup in lastMsg
+            const lastMsg = hasMessages 
+              ? messages[otherUser.id.toString()][messages[otherUser.id.toString()].length - 1] 
+              : null;
             
             return (
               <div 
                 key={otherUser.id} 
                 onClick={() => {
                   setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
-                  if (!messages[otherUser.id]) {
-                    setMessages(prev => ({ ...prev, [otherUser.id]: [] }));
+                  if (!messages[otherUser.id.toString()]) {
+                    setMessages(prev => ({ ...prev, [otherUser.id.toString()]: [] }));
                   }
                 }}
                 style={{ 
