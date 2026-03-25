@@ -83,7 +83,8 @@ function Bubble({ msg, contact, isMine }) {
       onMouseLeave={() => setShowActions(false)}>
       <div style={{ 
         float: isMine ? "right" : "left",
-        maxWidth: "70%"
+        maxWidth: "70%",
+        clear: "both"
       }}>
         {!isMine && <span style={{ fontSize: 11, color: "#64748B", marginBottom: 2, display: "block" }}>{contact?.name}</span>}
         <div style={{
@@ -281,33 +282,65 @@ function ChatApp({ user, onLogout }) {
 
   // Load messages for current conversation
   useEffect(() => {
-    if (active.id) {
-      const convId = active.id;
-      console.log(`📩 Loading messages for conversation: ${convId}`);
-      apiCall(`/api/load-messages/${convId}`)
+    if (active.id && user) {
+      const otherUserId = active.id;
+      const currentUserId = user.id.toString();
+      
+      console.log(`📩 Loading messages for conversation with user ${otherUserId}`);
+      
+      // Load messages where this user is the recipient (messages sent to them)
+      apiCall(`/api/load-messages/${currentUserId}`)
         .then(res => res.json())
         .then(data => {
-          console.log(`💬 Messages response for ${convId}:`, data);
+          console.log(`💬 Messages where I am recipient (convo ${currentUserId}):`, data);
           if (data.messages && data.messages.length > 0) {
-            const loadedMessages = data.messages.map(msg => ({
-              id: msg.id,
-              from: msg.sender,
-              text: msg.text,
-              time: msg.timestamp,
-              type: "text"
-            }));
+            // Filter messages from the other user
+            const fromOtherUser = data.messages.filter(msg => msg.sender === otherUserId);
+            console.log(`Messages from ${active.name}:`, fromOtherUser);
+            
             setMessages(prev => {
-              const newState = { ...prev, [convId]: loadedMessages };
-              console.log(`📝 Messages stored for key ${convId}:`, loadedMessages);
-              return newState;
+              const existing = prev[otherUserId] || [];
+              const newMessages = [...existing, ...fromOtherUser];
+              // Remove duplicates by id
+              const unique = newMessages.filter((msg, index, self) => 
+                index === self.findIndex(m => m.id === msg.id)
+              );
+              // Sort by timestamp
+              unique.sort((a, b) => a.id - b.id);
+              return { ...prev, [otherUserId]: unique };
             });
-          } else if (!messages[convId]) {
-            setMessages(prev => ({ ...prev, [convId]: [] }));
+          }
+        })
+        .catch(err => console.error(err));
+        
+      // Load messages where this user is the sender (messages they sent)
+      apiCall(`/api/load-messages/${otherUserId}`)
+        .then(res => res.json())
+        .then(data => {
+          console.log(`💬 Messages where I am sender (convo ${otherUserId}):`, data);
+          if (data.messages && data.messages.length > 0) {
+            // Filter messages from current user
+            const fromMe = data.messages.filter(msg => msg.sender === "me");
+            console.log(`Messages from me to ${active.name}:`, fromMe);
+            
+            setMessages(prev => {
+              const existing = prev[otherUserId] || [];
+              const newMessages = [...existing, ...fromMe];
+              // Remove duplicates by id
+              const unique = newMessages.filter((msg, index, self) => 
+                index === self.findIndex(m => m.id === msg.id)
+              );
+              // Sort by timestamp
+              unique.sort((a, b) => a.id - b.id);
+              return { ...prev, [otherUserId]: unique };
+            });
+          } else if (!messages[otherUserId]) {
+            setMessages(prev => ({ ...prev, [otherUserId]: [] }));
           }
         })
         .catch(err => console.error(err));
     }
-  }, [active.id]);
+  }, [active.id, user]);
 
   // Scroll to bottom
   useEffect(() => {
