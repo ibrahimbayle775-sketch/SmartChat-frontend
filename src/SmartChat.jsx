@@ -149,6 +149,10 @@ function AuthPage({ onLogin }) {
     
     try {
       console.log("Sending to:", `https://smartchat-backend-4kan.onrender.com${endpoint}`);
+      
+      // Clear old token before new request
+      localStorage.removeItem('token');
+      
       const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -161,9 +165,9 @@ function AuthPage({ onLogin }) {
       if (!response.ok || result.error) {
         setError(result.error || "Something went wrong");
       } else {
-        // Save token to localStorage
+        // Save new token
         if (result.token) {
-          console.log("💾 Saving token to localStorage");
+          console.log("💾 Saving NEW token to localStorage");
           localStorage.setItem('token', result.token);
         }
         onLogin(result.user);
@@ -240,21 +244,25 @@ function ChatApp({ user, onLogout }) {
   // Fetch all users
   useEffect(() => {
     console.log("🔍 Fetching users...");
+    const token = localStorage.getItem('token');
+    if (!token) {
+      console.log("❌ No token, skipping users fetch");
+      return;
+    }
+    
     apiCall('/api/users')
       .then(async res => {
         const data = await res.json();
         console.log("📡 Users API response status:", res.status);
-        console.log("📡 Users API response data:", data);
         if (res.ok && data.users) {
           console.log("✅ Found users:", data.users);
           setAllUsers(data.users);
+        } else if (res.status === 401) {
+          console.log("⚠️ Users API returned 401 - token may be invalid");
+          // Don't logout here - let the main session check handle it
+          setAllUsers([]);
         } else if (data.error) {
           console.log("❌ Error from server:", data.error);
-          if (data.error === 'Token is missing' || data.error === 'Invalid token' || res.status === 401) {
-            console.log("🔄 Token invalid, logging out...");
-            localStorage.removeItem('token');
-            onLogout();
-          }
         }
       })
       .catch(err => console.error("❌ Fetch error:", err));
@@ -458,7 +466,7 @@ export default function SmartChat() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    console.log("🔑 Token from localStorage:", token ? "Found" : "Not found");
+    console.log("🔑 Token from localStorage:", token ? `Found (${token.substring(0, 20)}...)` : "Not found");
     
     if (!token) {
       setLoading(false);
@@ -472,9 +480,10 @@ export default function SmartChat() {
         console.log("📡 Session response status:", res.status);
         console.log("📡 Session data:", data);
         if (res.ok && data.user) {
+          console.log("✅ Session valid for user:", data.user.username);
           setUser(data.user);
-        } else if (res.status === 401 || data.error === 'Token is missing' || data.error === 'Invalid token') {
-          console.log("🔄 Token invalid, clearing...");
+        } else {
+          console.log("❌ Session invalid, clearing token");
           localStorage.removeItem('token');
         }
       })
