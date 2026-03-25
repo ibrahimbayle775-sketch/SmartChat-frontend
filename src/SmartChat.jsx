@@ -56,9 +56,8 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
-// Message Bubble Component with Debug Borders
+// Message Bubble Component - Fixed Layout
 function Bubble({ msg, contact, isMine }) {
-  console.log("🫧 BUBBLE RENDERED:", msg.text);
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -76,19 +75,16 @@ function Bubble({ msg, contact, isMine }) {
 
   return (
     <div style={{ 
-      display: "flex", 
-      flexDirection: isMine ? "row-reverse" : "row", 
-      alignItems: "flex-end", 
-      gap: 8, 
-      marginBottom: 12,
-      border: "2px solid blue",  // Blue border to see container
-      padding: "4px",
-      borderRadius: "8px"
+      marginBottom: "16px",
+      clear: "both",
+      overflow: "hidden"
     }}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}>
-      {!isMine && <Avatar label={contact?.avatar ?? "?"} color={contact?.color ?? "#888"} size={32} />}
-      <div style={{ maxWidth: "70%" }}>
+      <div style={{ 
+        float: isMine ? "right" : "left",
+        maxWidth: "70%"
+      }}>
         {!isMine && <span style={{ fontSize: 11, color: "#64748B", marginBottom: 2, display: "block" }}>{contact?.name}</span>}
         <div style={{
           background: isMine ? "#E8A838" : "#1E293B",
@@ -96,11 +92,18 @@ function Bubble({ msg, contact, isMine }) {
           borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
           padding: "10px 14px",
           fontSize: 14,
-          border: "2px solid red"  // Red border to see message bubble
+          wordWrap: "break-word"
         }}>
           {msg.text}
         </div>
-        <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
+        <div style={{ 
+          display: "flex", 
+          gap: 8, 
+          marginTop: 4, 
+          alignItems: "center", 
+          justifyContent: isMine ? "flex-end" : "flex-start",
+          flexWrap: "wrap"
+        }}>
           <span style={{ fontSize: 10, color: "#475569" }}>{msg.time}</span>
           {tone && <span style={{ fontSize: 10, background: "#1e3a5f", color: "#60A5FA", padding: "2px 8px", borderRadius: 20 }}>{tone}</span>}
           {showActions && msg.type === "text" && msg.from !== "me" && (
@@ -435,16 +438,6 @@ function ChatApp({ user, onLogout }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-          {/* TEST DIV - Shows messages count */}
-          <div style={{ border: "2px solid red", minHeight: "100px", marginBottom: "20px", padding: "10px", background: "#0D1117", borderRadius: "8px" }}>
-            <div style={{ textAlign: "center", color: "#E8A838", marginBottom: "10px" }}>
-              🔍 TEST AREA - Messages Count: {activeMessages.length}
-            </div>
-            <div style={{ textAlign: "center", color: "white", background: "#E8A838", padding: "10px", margin: "10px", borderRadius: "8px", color: "#0F172A" }}>
-              TEST: Messages should appear below. Count: {activeMessages.length}
-            </div>
-          </div>
-          
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
@@ -455,18 +448,12 @@ function ChatApp({ user, onLogout }) {
               <p>No messages yet. Send a message to start the conversation!</p>
             </div>
           ) : (
-            <>
-              {(() => {
-                console.log("💬 RENDERING MESSAGES:", activeMessages);
-                return activeMessages.map(msg => {
-                  console.log("🎨 RENDERING MESSAGE:", msg.text, "from:", msg.from);
-                  const isMine = msg.from === "me";
-                  const contactName = isMine ? "You" : activeName;
-                  const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
-                  return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
-                });
-              })()}
-            </>
+            activeMessages.map(msg => {
+              const isMine = msg.from === "me";
+              const contactName = isMine ? "You" : activeName;
+              const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
+              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
+            })
           )}
           <div ref={bottomRef} />
         </div>
