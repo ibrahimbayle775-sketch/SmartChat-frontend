@@ -208,6 +208,7 @@ function ChatApp({ user, onLogout }) {
   const [allUsers, setAllUsers] = useState([]);
   const bottomRef = useRef();
 
+  // Fetch all users
   useEffect(() => {
     fetch('https://smartchat-backend-4kan.onrender.com/api/users', {
       credentials: 'include'
@@ -219,6 +220,7 @@ function ChatApp({ user, onLogout }) {
       .catch(err => console.error(err));
   }, []);
 
+  // Load messages for current conversation
   useEffect(() => {
     if (active.id) {
       fetch(`https://smartchat-backend-4kan.onrender.com/api/load-messages/${active.id}`, {
@@ -243,6 +245,7 @@ function ChatApp({ user, onLogout }) {
     }
   }, [active.id]);
 
+  // Scroll to bottom
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
@@ -285,20 +288,15 @@ function ChatApp({ user, onLogout }) {
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
+      {/* Sidebar */}
       <aside style={{ width: 280, background: "#0D1117", borderRight: "1px solid #1E293B", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: 20, borderBottom: "1px solid #1E293B" }}>
           <h2 style={{ color: "#E8A838", margin: 0 }}>SmartChat</h2>
           <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>Welcome, {user.username}!</p>
         </div>
         
-        <div style={{ padding: "16px", borderBottom: "1px solid #1E293B" }}>
-          <div style={{ textAlign: "center", color: "#64748B", fontSize: "12px" }}>
-            Click any user to start chatting
-          </div>
-        </div>
-        
         <div style={{ padding: "0 16px", borderBottom: "1px solid #1E293B", marginBottom: "10px" }}>
-          <h4 style={{ color: "#64748B", margin: "0 0 8px 0", fontSize: "12px" }}>ALL USERS</h4>
+          <h4 style={{ color: "#64748B", margin: "8px 0", fontSize: "12px" }}>ALL USERS</h4>
         </div>
         
         <div style={{ flex: 1, overflowY: "auto" }}>
@@ -323,8 +321,7 @@ function ChatApp({ user, onLogout }) {
                   padding: "12px 16px", 
                   background: isActive ? "#1E293B" : "transparent", 
                   cursor: "pointer",
-                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent",
-                  transition: "background 0.2s"
+                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
                 }}>
                 <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
                 <div style={{ flex: 1 }}>
@@ -353,6 +350,7 @@ function ChatApp({ user, onLogout }) {
         </button>
       </aside>
 
+      {/* Main Chat Area */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #1E293B", background: "#0D1117", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
@@ -415,6 +413,7 @@ export default function SmartChat() {
     fetch('https://smartchat-backend-4kan.onrender.com/api/me', { credentials: 'include' })
       .then(res => res.json())
       .then(data => { if (data.user) setUser(data.user); })
+      .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
 
