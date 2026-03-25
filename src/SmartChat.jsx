@@ -56,8 +56,9 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
-// Message Bubble Component
+// Message Bubble Component with Debug Log
 function Bubble({ msg, contact, isMine }) {
+  console.log("🫧 BUBBLE RENDERED:", msg.text);
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -423,6 +424,16 @@ function ChatApp({ user, onLogout }) {
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+          {/* TEST DIV - Shows messages count */}
+          <div style={{ border: "2px solid red", minHeight: "100px", marginBottom: "20px", padding: "10px", background: "#0D1117", borderRadius: "8px" }}>
+            <div style={{ textAlign: "center", color: "#E8A838", marginBottom: "10px" }}>
+              🔍 TEST AREA - Messages Count: {activeMessages.length}
+            </div>
+            <div style={{ textAlign: "center", color: "white", background: "#E8A838", padding: "10px", margin: "10px", borderRadius: "8px", color: "#0F172A" }}>
+              TEST: Messages should appear below. Count: {activeMessages.length}
+            </div>
+          </div>
+          
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
