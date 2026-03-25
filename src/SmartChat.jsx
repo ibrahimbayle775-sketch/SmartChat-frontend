@@ -1,15 +1,5 @@
 import { useState, useRef, useEffect } from "react";
 
-// API calls with authentication
-async function apiCall(endpoint, options = {}) {
-  const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
-    ...options,
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json', ...options.headers }
-  });
-  return response.json();
-}
-
 // Helper functions
 const uid = () => Math.random().toString(36).slice(2, 10);
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -30,43 +20,7 @@ async function callClaude(systemPrompt, userContent, maxTokens = 512) {
   }
 }
 
-// Contacts and Groups
-const CONTACTS = [
-  { id: "u1", name: "Dr. Amara Osei", role: "lecturer", avatar: "AO", color: "#E8A838" },
-  { id: "u2", name: "Liam Mwangi", role: "student", avatar: "LM", color: "#4FC3B0" },
-  { id: "u3", name: "Priya Sharma", role: "student", avatar: "PS", color: "#A78BFA" },
-];
-
-const GROUPS = [
-  { id: "g1", name: "CS301 – Data Structures", avatar: "DS", color: "#60A5FA", members: ["u1", "u2", "u3"] },
-  { id: "g2", name: "Study Group Alpha", avatar: "SG", color: "#FBBF24", members: ["u2", "u3"] },
-];
-
-const SEED_MESSAGES = {
-  u2: [
-    { id: uid(), from: "u2", text: "Good morning Dr. Osei!", time: "09:12", type: "text" },
-    { id: uid(), from: "me", text: "Good morning Liam! How can I help you?", time: "09:15", type: "text" },
-  ],
-  u1: [
-    { id: uid(), from: "me", text: "Please review the lecture slides.", time: "08:00", type: "text" },
-    { id: uid(), from: "u1", text: "Will do, Professor!", time: "08:05", type: "text" },
-  ],
-  u3: [
-    { id: uid(), from: "u3", text: "Hi Dr. Osei, I have a question about the assignment.", time: "10:00", type: "text" },
-    { id: uid(), from: "me", text: "Sure Priya, what's your question?", time: "10:02", type: "text" },
-  ],
-  g1: [
-    { id: uid(), from: "u1", text: "Welcome to CS301! Please introduce yourselves.", time: "09:00", type: "text" },
-    { id: uid(), from: "u2", text: "Hi everyone! I'm Liam.", time: "09:05", type: "text" },
-    { id: uid(), from: "u3", text: "Hello! I'm Priya.", time: "09:06", type: "text" },
-  ],
-  g2: [
-    { id: uid(), from: "u2", text: "Anyone want to study together today?", time: "14:00", type: "text" },
-    { id: uid(), from: "u3", text: "I'm in! What time?", time: "14:05", type: "text" },
-  ],
-};
-
-// Components
+// Avatar Component
 function Avatar({ label, color, size = 38 }) {
   return (
     <div style={{
@@ -80,6 +34,7 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
+// Message Bubble Component
 function Bubble({ msg, contact, isMine, onAnalyze }) {
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
@@ -126,6 +81,7 @@ function Bubble({ msg, contact, isMine, onAnalyze }) {
   );
 }
 
+// AI Panel Component
 function AIPanel({ messages, onClose }) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
@@ -168,14 +124,27 @@ function AuthPage({ onLogin }) {
     const endpoint = isLogin ? '/api/login' : '/api/register';
     const data = isLogin ? { username, password } : { username, email, password };
     
-    const result = await apiCall(endpoint, { method: 'POST', body: JSON.stringify(data) });
-    
-    if (result.error) {
-      setError(result.error);
-    } else {
-      onLogin(result.user);
+    try {
+      const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(data)
+      });
+      
+      const result = await response.json();
+      
+      if (!response.ok || result.error) {
+        setError(result.error || "Something went wrong");
+      } else {
+        onLogin(result.user);
+      }
+    } catch (err) {
+      console.error("Fetch error:", err);
+      setError("Cannot connect to server. Please try again.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -183,21 +152,45 @@ function AuthPage({ onLogin }) {
       <div style={{ background: "#0D1117", padding: "40px", borderRadius: "16px", width: "100%", maxWidth: "400px", border: "1px solid #1E293B" }}>
         <h1 style={{ color: "#E8A838", marginBottom: "30px", textAlign: "center" }}>SmartChat</h1>
         <form onSubmit={handleSubmit}>
-          <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required
-            style={{ width: "100%", padding: "12px", marginBottom: "12px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} />
-          {!isLogin && <input type="email" placeholder="Email" value={email} onChange={e => setEmail(e.target.value)} required
-            style={{ width: "100%", padding: "12px", marginBottom: "12px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} />}
-          <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} required
-            style={{ width: "100%", padding: "12px", marginBottom: "20px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} />
+          <input 
+            type="text" 
+            placeholder="Username" 
+            value={username} 
+            onChange={e => setUsername(e.target.value)} 
+            required
+            style={{ width: "100%", padding: "12px", marginBottom: "12px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} 
+          />
+          {!isLogin && (
+            <input 
+              type="email" 
+              placeholder="Email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              required
+              style={{ width: "100%", padding: "12px", marginBottom: "12px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} 
+            />
+          )}
+          <input 
+            type="password" 
+            placeholder="Password" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+            required
+            style={{ width: "100%", padding: "12px", marginBottom: "20px", background: "#161B22", border: "1px solid #2D3748", borderRadius: "8px", color: "#E2E8F0" }} 
+          />
           {error && <p style={{ color: "#F87171", marginBottom: "12px" }}>{error}</p>}
-          <button type="submit" disabled={loading}
-            style={{ width: "100%", padding: "12px", background: "#E8A838", border: "none", borderRadius: "8px", color: "#0F172A", fontWeight: "bold", cursor: "pointer" }}>
+          <button 
+            type="submit" 
+            disabled={loading}
+            style={{ width: "100%", padding: "12px", background: "#E8A838", border: "none", borderRadius: "8px", color: "#0F172A", fontWeight: "bold", cursor: loading ? "not-allowed" : "pointer" }}>
             {loading ? "Loading..." : (isLogin ? "Login" : "Sign Up")}
           </button>
         </form>
         <p style={{ textAlign: "center", marginTop: "20px", color: "#64748B" }}>
           {isLogin ? "Don't have an account? " : "Already have an account? "}
-          <button onClick={() => { setIsLogin(!isLogin); setError(""); }} style={{ background: "none", border: "none", color: "#E8A838", cursor: "pointer" }}>
+          <button 
+            onClick={() => { setIsLogin(!isLogin); setError(""); }} 
+            style={{ background: "none", border: "none", color: "#E8A838", cursor: "pointer" }}>
             {isLogin ? "Sign Up" : "Login"}
           </button>
         </p>
@@ -208,85 +201,279 @@ function AuthPage({ onLogin }) {
 
 // Main Chat Component
 function ChatApp({ user, onLogout }) {
-  const [active, setActive] = useState({ id: "u2", type: "dm" });
-  const [messages, setMessages] = useState(SEED_MESSAGES);
+  const [active, setActive] = useState({ id: null, type: "dm", name: null });
+  const [messages, setMessages] = useState({});
   const [input, setInput] = useState("");
   const [showAI, setShowAI] = useState(false);
-  const [sideTab, setSideTab] = useState("dm");
+  const [allUsers, setAllUsers] = useState([]);
+  const [showUserList, setShowUserList] = useState(false);
+  const [chats, setChats] = useState([]);
   const bottomRef = useRef();
 
-  const activeMessages = messages[active.id] ?? [];
-  const activeContact = active.type === "dm" ? CONTACTS.find(c => c.id === active.id) : GROUPS.find(g => g.id === active.id);
+  // Fetch all users when component loads
+  useEffect(() => {
+    fetch('https://smartchat-backend-4kan.onrender.com/api/users', {
+      credentials: 'include'
+    })
+      .then(res => res.json())
+      .then(data => {
+        if (data.users) setAllUsers(data.users);
+      })
+      .catch(err => console.error(err));
+  }, []);
 
+  // Load messages for current conversation
+  useEffect(() => {
+    if (active.id) {
+      fetch(`https://smartchat-backend-4kan.onrender.com/api/load-messages/${active.id}`, {
+        credentials: 'include'
+      })
+        .then(res => res.json())
+        .then(data => {
+          if (data.messages && data.messages.length > 0) {
+            const loadedMessages = data.messages.map(msg => ({
+              id: msg.id,
+              from: msg.sender,
+              text: msg.text,
+              time: msg.timestamp,
+              type: "text"
+            }));
+            setMessages(prev => ({ ...prev, [active.id]: loadedMessages }));
+          }
+        })
+        .catch(err => console.error(err));
+    }
+  }, [active.id]);
+
+  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
 
-  const send = (text) => {
-    if (!text.trim()) return;
-    const msg = { id: uid(), from: "me", text: text.trim(), time: now(), type: "text" };
-    setMessages(prev => ({ ...prev, [active.id]: [...(prev[active.id] ?? []), msg] }));
+  const send = async (text) => {
+    if (!text.trim() || !active.id) return;
+    
+    const msg = { 
+      id: uid(), 
+      from: "me", 
+      text: text.trim(), 
+      time: now(), 
+      type: "text" 
+    };
+    
+    setMessages(prev => ({ 
+      ...prev, 
+      [active.id]: [...(prev[active.id] ?? []), msg] 
+    }));
     setInput("");
+    
+    // Save to backend
+    try {
+      await fetch('https://smartchat-backend-4kan.onrender.com/api/save-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          conversation_id: active.id,
+          sender: "me",
+          text: text.trim()
+        })
+      });
+    } catch (err) {
+      console.error("Error saving message:", err);
+    }
   };
+
+  const startNewChat = (userId, username) => {
+    setActive({ id: userId, type: "dm", name: username });
+    setShowUserList(false);
+    // Initialize empty messages for this conversation if not exists
+    setMessages(prev => {
+      if (!prev[userId]) {
+        return { ...prev, [userId]: [] };
+      }
+      return prev;
+    });
+  };
+
+  const activeMessages = active.id ? (messages[active.id] ?? []) : [];
+  const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
+      {/* Sidebar */}
       <aside style={{ width: 280, background: "#0D1117", borderRight: "1px solid #1E293B", display: "flex", flexDirection: "column" }}>
         <div style={{ padding: 20, borderBottom: "1px solid #1E293B" }}>
           <h2 style={{ color: "#E8A838", margin: 0 }}>SmartChat</h2>
           <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>Welcome, {user.username}!</p>
         </div>
         
-        <div style={{ display: "flex", padding: "10px 12px", gap: 8 }}>
-          <button onClick={() => setSideTab("dm")} style={{ flex: 1, padding: "8px", background: sideTab === "dm" ? "#E8A838" : "#161B22", color: sideTab === "dm" ? "#0F172A" : "#E2E8F0", border: "none", borderRadius: 8, cursor: "pointer" }}>Direct</button>
-          <button onClick={() => setSideTab("groups")} style={{ flex: 1, padding: "8px", background: sideTab === "groups" ? "#E8A838" : "#161B22", color: sideTab === "groups" ? "#0F172A" : "#E2E8F0", border: "none", borderRadius: 8, cursor: "pointer" }}>Groups</button>
-        </div>
-
-        <div style={{ flex: 1, overflowY: "auto" }}>
-          {sideTab === "dm" && CONTACTS.map(c => {
-            const isActive = active.id === c.id && active.type === "dm";
-            return (
-              <div key={c.id} onClick={() => setActive({ id: c.id, type: "dm" })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: isActive ? "#1E293B" : "transparent", cursor: "pointer", borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent" }}>
-                <Avatar label={c.avatar} color={c.color} size={40} />
-                <div><div style={{ fontWeight: 600, color: "#E2E8F0" }}>{c.name}</div><div style={{ fontSize: 11, color: "#64748B" }}>{c.role}</div></div>
-              </div>
-            );
-          })}
-          {sideTab === "groups" && GROUPS.map(g => {
-            const isActive = active.id === g.id && active.type === "group";
-            return (
-              <div key={g.id} onClick={() => setActive({ id: g.id, type: "group" })} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", background: isActive ? "#1E293B" : "transparent", cursor: "pointer", borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent" }}>
-                <Avatar label={g.avatar} color={g.color} size={40} />
-                <div><div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div><div style={{ fontSize: 11, color: "#64748B" }}>{g.members.length} members</div></div>
-              </div>
-            );
-          })}
+        <div style={{ padding: "16px" }}>
+          <button 
+            onClick={() => setShowUserList(true)}
+            style={{
+              width: "100%",
+              padding: "10px",
+              background: "#E8A838",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              fontSize: "14px"
+            }}
+          >
+            + New Chat
+          </button>
         </div>
         
-        <button onClick={onLogout} style={{ margin: "16px", padding: "8px", background: "#F87171", border: "none", borderRadius: 8, color: "#0F172A", cursor: "pointer" }}>Logout</button>
+        <div style={{ padding: "0 16px", borderBottom: "1px solid #1E293B", marginBottom: "10px" }}>
+          <h4 style={{ color: "#64748B", margin: "0 0 8px 0", fontSize: "12px" }}>YOUR CHATS</h4>
+        </div>
+        
+        <div style={{ flex: 1, overflowY: "auto" }}>
+          {Object.keys(messages).filter(key => messages[key]?.length > 0).map(chatId => {
+            const isActive = active.id === chatId;
+            const chatUser = allUsers.find(u => u.id.toString() === chatId);
+            const lastMsg = messages[chatId]?.[messages[chatId].length - 1];
+            return (
+              <div 
+                key={chatId} 
+                onClick={() => setActive({ id: chatId, type: "dm", name: chatUser?.username })}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: 12, 
+                  padding: "12px 16px", 
+                  background: isActive ? "#1E293B" : "transparent", 
+                  cursor: "pointer",
+                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
+                }}>
+                <Avatar label={chatUser?.username?.substring(0,2).toUpperCase() || "?"} color="#E8A838" size={40} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{chatUser?.username || "Unknown"}</div>
+                  {lastMsg && <div style={{ fontSize: 11, color: "#64748B" }}>{lastMsg.text.substring(0, 30)}</div>}
+                </div>
+              </div>
+            );
+          })}
+          {Object.keys(messages).filter(key => messages[key]?.length > 0).length === 0 && (
+            <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
+              No chats yet. Click "+ New Chat" to start!
+            </div>
+          )}
+        </div>
+        
+        <button 
+          onClick={onLogout} 
+          style={{ margin: "16px", padding: "10px", background: "#F87171", border: "none", borderRadius: 8, color: "#0F172A", cursor: "pointer", fontWeight: "bold" }}>
+          Logout
+        </button>
       </aside>
 
+      {/* Main Chat Area */}
       <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
         <div style={{ padding: "16px 20px", borderBottom: "1px solid #1E293B", background: "#0D1117", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-          <div><h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeContact?.name ?? "—"}</h3></div>
-          <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>✦ AI Tools</button>
+          <div>
+            <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
+            {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>Online</p>}
+          </div>
+          <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+            ✦ AI Tools
+          </button>
         </div>
 
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
-          {activeMessages.map(msg => {
-            const contact = active.type === "dm" ? CONTACTS.find(c => c.id === msg.from) : { name: "Unknown", avatar: "?", color: "#888" };
-            return <Bubble key={msg.id} msg={msg} contact={contact} isMine={msg.from === "me"} onAnalyze={() => setShowAI(true)} />;
-          })}
+          {!active.id ? (
+            <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
+              <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
+              <p>Click "+ New Chat" to start messaging other users.</p>
+            </div>
+          ) : activeMessages.length === 0 ? (
+            <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
+              <p>No messages yet. Send a message to start the conversation!</p>
+            </div>
+          ) : (
+            activeMessages.map(msg => {
+              const isMine = msg.from === "me";
+              const contactName = isMine ? "You" : activeName;
+              const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
+              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} onAnalyze={() => setShowAI(true)} />;
+            })
+          )}
           <div ref={bottomRef} />
         </div>
 
         <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B", background: "#0D1117", display: "flex", gap: 12 }}>
-          <textarea value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(input); } }} placeholder="Type a message..." rows={1} style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none" }} />
-          <button onClick={() => send(input)} disabled={!input.trim()} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer" }}>➤</button>
+          <textarea 
+            value={input} 
+            onChange={e => setInput(e.target.value)} 
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && active.id) { e.preventDefault(); send(input); } }} 
+            placeholder={active.id ? "Type a message..." : "Select a chat to start messaging"}
+            disabled={!active.id}
+            rows={1} 
+            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
+          />
+          <button onClick={() => send(input)} disabled={!input.trim() || !active.id} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id) ? 0.5 : 1 }}>
+            ➤
+          </button>
         </div>
 
         {showAI && <AIPanel messages={activeMessages} onClose={() => setShowAI(false)} />}
       </main>
+
+      {/* New Chat Modal */}
+      {showUserList && (
+        <div style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "#0D1117",
+          border: "1px solid #1E293B",
+          borderRadius: "12px",
+          padding: "20px",
+          width: "320px",
+          zIndex: 2000,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3 style={{ color: "#E8A838", margin: 0 }}>Start New Chat</h3>
+            <button onClick={() => setShowUserList(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>✕</button>
+          </div>
+          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+            {allUsers.filter(u => u.username !== user.username).map(otherUser => (
+              <div
+                key={otherUser.id}
+                onClick={() => startNewChat(otherUser.id.toString(), otherUser.username)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "12px",
+                  padding: "12px",
+                  margin: "4px 0",
+                  background: "#161B22",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                  transition: "background 0.2s"
+                }}
+                onMouseEnter={e => e.currentTarget.style.background = "#1E293B"}
+                onMouseLeave={e => e.currentTarget.style.background = "#161B22"}
+              >
+                <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
+                <div>
+                  <div style={{ color: "#E2E8F0", fontWeight: "bold" }}>{otherUser.username}</div>
+                  <div style={{ color: "#64748B", fontSize: "12px" }}>Click to start chatting</div>
+                </div>
+              </div>
+            ))}
+            {allUsers.filter(u => u.username !== user.username).length === 0 && (
+              <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
+                No other users yet. Share this app with friends!
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
