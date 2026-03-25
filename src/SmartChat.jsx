@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars */
+/* eslint-disable */
 import { useState, useRef, useEffect } from "react";
 
 // Helper functions
@@ -17,6 +17,7 @@ async function callClaude(systemPrompt, userContent, maxTokens = 512) {
     if (data.content) return data.content;
     return "Sorry, couldn't get a response.";
   } catch (error) {
+    console.error("Claude error:", error);
     return "Oops! Can't connect to backend.";
   }
 }
@@ -126,6 +127,7 @@ function AuthPage({ onLogin }) {
     const data = isLogin ? { username, password } : { username, email, password };
     
     try {
+      console.log("Sending to:", `https://smartchat-backend-4kan.onrender.com${endpoint}`);
       const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -134,6 +136,7 @@ function AuthPage({ onLogin }) {
       });
       
       const result = await response.json();
+      console.log("Response:", result);
       
       if (!response.ok || result.error) {
         setError(result.error || "Something went wrong");
@@ -211,24 +214,33 @@ function ChatApp({ user, onLogout }) {
 
   // Fetch all users
   useEffect(() => {
+    console.log("Fetching users...");
     fetch('https://smartchat-backend-4kan.onrender.com/api/users', {
       credentials: 'include'
     })
       .then(res => res.json())
       .then(data => {
-        if (data.users) setAllUsers(data.users);
+        console.log("Users API response:", data);
+        if (data.users) {
+          console.log("Found users:", data.users);
+          setAllUsers(data.users);
+        } else if (data.error) {
+          console.log("Error from server:", data.error);
+        }
       })
-      .catch(err => console.error(err));
+      .catch(err => console.error("Fetch error:", err));
   }, []);
 
   // Load messages for current conversation
   useEffect(() => {
     if (active.id) {
+      console.log("Loading messages for conversation:", active.id);
       fetch(`https://smartchat-backend-4kan.onrender.com/api/load-messages/${active.id}`, {
         credentials: 'include'
       })
         .then(res => res.json())
         .then(data => {
+          console.log("Messages response:", data);
           if (data.messages && data.messages.length > 0) {
             const loadedMessages = data.messages.map(msg => ({
               id: msg.id,
@@ -287,6 +299,10 @@ function ChatApp({ user, onLogout }) {
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
+  // Log allUsers for debugging
+  console.log("Current allUsers:", allUsers);
+  console.log("Current user:", user);
+
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
       {/* Sidebar */}
@@ -339,7 +355,7 @@ function ChatApp({ user, onLogout }) {
           })}
           {allUsers.filter(u => u.username !== user.username).length === 0 && (
             <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
-              No other users yet. Share this app with friends!
+              No other users yet. Create another account in a different browser!
             </div>
           )}
         </div>
@@ -411,9 +427,13 @@ export default function SmartChat() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    console.log("Checking session...");
     fetch('https://smartchat-backend-4kan.onrender.com/api/me', { credentials: 'include' })
       .then(res => res.json())
-      .then(data => { if (data.user) setUser(data.user); })
+      .then(data => { 
+        console.log("Session data:", data);
+        if (data.user) setUser(data.user); 
+      })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
   }, []);
