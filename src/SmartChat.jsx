@@ -56,7 +56,7 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
-// Message Bubble Component with Debug Log
+// Message Bubble Component with Debug Borders
 function Bubble({ msg, contact, isMine }) {
   console.log("🫧 BUBBLE RENDERED:", msg.text);
   const [tone, setTone] = useState(null);
@@ -75,7 +75,16 @@ function Bubble({ msg, contact, isMine }) {
   };
 
   return (
-    <div style={{ display: "flex", flexDirection: isMine ? "row-reverse" : "row", alignItems: "flex-end", gap: 8, marginBottom: 12 }}
+    <div style={{ 
+      display: "flex", 
+      flexDirection: isMine ? "row-reverse" : "row", 
+      alignItems: "flex-end", 
+      gap: 8, 
+      marginBottom: 12,
+      border: "2px solid blue",  // Blue border to see container
+      padding: "4px",
+      borderRadius: "8px"
+    }}
       onMouseEnter={() => setShowActions(true)}
       onMouseLeave={() => setShowActions(false)}>
       {!isMine && <Avatar label={contact?.avatar ?? "?"} color={contact?.color ?? "#888"} size={32} />}
@@ -85,7 +94,9 @@ function Bubble({ msg, contact, isMine }) {
           background: isMine ? "#E8A838" : "#1E293B",
           color: isMine ? "#0F172A" : "#E2E8F0",
           borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-          padding: "10px 14px", fontSize: 14
+          padding: "10px 14px",
+          fontSize: 14,
+          border: "2px solid red"  // Red border to see message bubble
         }}>
           {msg.text}
         </div>
