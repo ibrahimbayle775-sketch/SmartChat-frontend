@@ -5,12 +5,32 @@ import { useState, useRef, useEffect } from "react";
 const uid = () => Math.random().toString(36).slice(2, 10);
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// Store token in localStorage
+let authToken = localStorage.getItem('token');
+
+async function apiCall(endpoint, options = {}) {
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  
+  if (authToken) {
+    headers['Authorization'] = `Bearer ${authToken}`;
+  }
+  
+  const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
+    ...options,
+    headers,
+    credentials: 'omit'  // No cookies needed with JWT
+  });
+  
+  return response;
+}
+
 async function callClaude(systemPrompt, userContent, maxTokens = 512) {
   try {
-    const response = await fetch('https://smartchat-backend-4kan.onrender.com/api/chat', {
+    const response = await apiCall('/api/chat', {
       method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ systemPrompt, userContent, maxTokens }),
     });
     const data = await response.json();
@@ -131,7 +151,6 @@ function AuthPage({ onLogin }) {
       const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify(data)
       });
       
@@ -141,6 +160,11 @@ function AuthPage({ onLogin }) {
       if (!response.ok || result.error) {
         setError(result.error || "Something went wrong");
       } else {
+        // Save token to localStorage
+        if (result.token) {
+          localStorage.setItem('token', result.token);
+          window.authToken = result.token;
+        }
         onLogin(result.user);
       }
     } catch (err) {
@@ -215,9 +239,7 @@ function ChatApp({ user, onLogout }) {
   // Fetch all users
   useEffect(() => {
     console.log("Fetching users...");
-    fetch('https://smartchat-backend-4kan.onrender.com/api/users', {
-      credentials: 'include'
-    })
+    apiCall('/api/users')
       .then(res => res.json())
       .then(data => {
         console.log("Users API response:", data);
@@ -226,6 +248,10 @@ function ChatApp({ user, onLogout }) {
           setAllUsers(data.users);
         } else if (data.error) {
           console.log("Error from server:", data.error);
+          if (data.error === 'Token is missing' || data.error === 'Invalid token') {
+            localStorage.removeItem('token');
+            onLogout();
+          }
         }
       })
       .catch(err => console.error("Fetch error:", err));
@@ -235,9 +261,7 @@ function ChatApp({ user, onLogout }) {
   useEffect(() => {
     if (active.id) {
       console.log("Loading messages for conversation:", active.id);
-      fetch(`https://smartchat-backend-4kan.onrender.com/api/load-messages/${active.id}`, {
-        credentials: 'include'
-      })
+      apiCall(`/api/load-messages/${active.id}`)
         .then(res => res.json())
         .then(data => {
           console.log("Messages response:", data);
@@ -281,10 +305,8 @@ function ChatApp({ user, onLogout }) {
     setInput("");
     
     try {
-      await fetch('https://smartchat-backend-4kan.onrender.com/api/save-message', {
+      await apiCall('/api/save-message', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
         body: JSON.stringify({
           conversation_id: active.id,
           sender: "me",
@@ -296,10 +318,14 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    onLogout();
+  };
+
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
-  // Log allUsers for debugging
   console.log("Current allUsers:", allUsers);
   console.log("Current user:", user);
 
@@ -361,7 +387,7 @@ function ChatApp({ user, onLogout }) {
         </div>
         
         <button 
-          onClick={onLogout} 
+          onClick={handleLogout} 
           style={{ margin: "16px", padding: "10px", background: "#F87171", border: "none", borderRadius: 8, color: "#0F172A", cursor: "pointer", fontWeight: "bold" }}>
           Logout
         </button>
@@ -427,12 +453,22 @@ export default function SmartChat() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    
     console.log("Checking session...");
-    fetch('https://smartchat-backend-4kan.onrender.com/api/me', { credentials: 'include' })
+    apiCall('/api/me')
       .then(res => res.json())
       .then(data => { 
         console.log("Session data:", data);
-        if (data.user) setUser(data.user); 
+        if (data.user) {
+          setUser(data.user);
+        } else if (data.error === 'Token is missing' || data.error === 'Invalid token') {
+          localStorage.removeItem('token');
+        }
       })
       .catch(err => console.error(err))
       .finally(() => setLoading(false));
