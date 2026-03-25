@@ -11,7 +11,6 @@ async function apiCall(endpoint, options = {}) {
     ...options.headers
   };
   
-  // Always get the latest token from localStorage
   const token = localStorage.getItem('token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
@@ -150,7 +149,6 @@ function AuthPage({ onLogin }) {
     try {
       console.log("Sending to:", `https://smartchat-backend-4kan.onrender.com${endpoint}`);
       
-      // Clear old token before new request
       localStorage.removeItem('token');
       
       const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
@@ -165,7 +163,6 @@ function AuthPage({ onLogin }) {
       if (!response.ok || result.error) {
         setError(result.error || "Something went wrong");
       } else {
-        // Save new token
         if (result.token) {
           console.log("💾 Saving NEW token to localStorage");
           localStorage.setItem('token', result.token);
@@ -259,7 +256,6 @@ function ChatApp({ user, onLogout }) {
           setAllUsers(data.users);
         } else if (res.status === 401) {
           console.log("⚠️ Users API returned 401 - token may be invalid");
-          // Don't logout here - let the main session check handle it
           setAllUsers([]);
         } else if (data.error) {
           console.log("❌ Error from server:", data.error);
@@ -271,11 +267,12 @@ function ChatApp({ user, onLogout }) {
   // Load messages for current conversation
   useEffect(() => {
     if (active.id) {
-      console.log("📩 Loading messages for conversation:", active.id);
-      apiCall(`/api/load-messages/${active.id}`)
+      const convId = active.id;
+      console.log(`📩 Loading messages for conversation: ${convId}`);
+      apiCall(`/api/load-messages/${convId}`)
         .then(res => res.json())
         .then(data => {
-          console.log("💬 Messages response:", data);
+          console.log(`💬 Messages response for ${convId}:`, data);
           if (data.messages && data.messages.length > 0) {
             const loadedMessages = data.messages.map(msg => ({
               id: msg.id,
@@ -284,9 +281,13 @@ function ChatApp({ user, onLogout }) {
               time: msg.timestamp,
               type: "text"
             }));
-            setMessages(prev => ({ ...prev, [active.id]: loadedMessages }));
-          } else if (!messages[active.id]) {
-            setMessages(prev => ({ ...prev, [active.id]: [] }));
+            setMessages(prev => {
+              const newState = { ...prev, [convId]: loadedMessages };
+              console.log(`📝 Messages stored for key ${convId}:`, loadedMessages);
+              return newState;
+            });
+          } else if (!messages[convId]) {
+            setMessages(prev => ({ ...prev, [convId]: [] }));
           }
         })
         .catch(err => console.error(err));
@@ -338,6 +339,7 @@ function ChatApp({ user, onLogout }) {
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
+  console.log(`🖥️ Rendering chat for ${activeName}, messages count: ${activeMessages.length}`);
   console.log("👥 Current allUsers:", allUsers);
   console.log("👤 Current user:", user);
 
@@ -364,6 +366,7 @@ function ChatApp({ user, onLogout }) {
               <div 
                 key={otherUser.id} 
                 onClick={() => {
+                  console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
                   setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
                   if (!messages[otherUser.id]) {
                     setMessages(prev => ({ ...prev, [otherUser.id]: [] }));
