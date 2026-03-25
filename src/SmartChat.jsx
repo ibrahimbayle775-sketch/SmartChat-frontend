@@ -280,67 +280,71 @@ function ChatApp({ user, onLogout }) {
       .catch(err => console.error("❌ Fetch error:", err));
   }, []);
 
+  // Function to refresh messages
+  const refreshMessages = async () => {
+    if (!active.id || !user) return;
+    
+    const otherUserId = active.id;
+    const currentUserId = user.id.toString();
+    
+    console.log("🔄 Manually refreshing messages...");
+    
+    try {
+      // Load messages sent to current user
+      const response1 = await apiCall(`/api/load-messages/${currentUserId}`);
+      const data1 = await response1.json();
+      
+      // Load messages sent by current user
+      const response2 = await apiCall(`/api/load-messages/${otherUserId}`);
+      const data2 = await response2.json();
+      
+      let allMessages = [];
+      
+      if (data1.messages) {
+        const fromOther = data1.messages.filter(msg => msg.sender === otherUserId);
+        allMessages = [...allMessages, ...fromOther];
+      }
+      
+      if (data2.messages) {
+        const fromMe = data2.messages.filter(msg => msg.sender === "me");
+        allMessages = [...allMessages, ...fromMe];
+      }
+      
+      const formattedMessages = allMessages.map(msg => ({
+        id: msg.id,
+        from: msg.sender === "me" ? "me" : otherUserId,
+        text: msg.text,
+        time: msg.timestamp,
+        type: "text"
+      }));
+      
+      formattedMessages.sort((a, b) => a.id - b.id);
+      
+      setMessages(prev => ({ ...prev, [otherUserId]: formattedMessages }));
+      console.log(`✅ Refreshed ${formattedMessages.length} messages`);
+    } catch (err) {
+      console.error("Error refreshing messages:", err);
+    }
+  };
+
   // Load messages for current conversation
   useEffect(() => {
     if (active.id && user) {
-      const otherUserId = active.id;
-      const currentUserId = user.id.toString();
-      
-      console.log(`📩 Loading messages for conversation with user ${otherUserId}`);
-      
-      // Load messages where this user is the recipient (messages sent to them)
-      apiCall(`/api/load-messages/${currentUserId}`)
-        .then(res => res.json())
-        .then(data => {
-          console.log(`💬 Messages where I am recipient (convo ${currentUserId}):`, data);
-          if (data.messages && data.messages.length > 0) {
-            // Filter messages from the other user
-            const fromOtherUser = data.messages.filter(msg => msg.sender === otherUserId);
-            console.log(`Messages from ${active.name}:`, fromOtherUser);
-            
-            setMessages(prev => {
-              const existing = prev[otherUserId] || [];
-              const newMessages = [...existing, ...fromOtherUser];
-              // Remove duplicates by id
-              const unique = newMessages.filter((msg, index, self) => 
-                index === self.findIndex(m => m.id === msg.id)
-              );
-              // Sort by timestamp
-              unique.sort((a, b) => a.id - b.id);
-              return { ...prev, [otherUserId]: unique };
-            });
-          }
-        })
-        .catch(err => console.error(err));
-        
-      // Load messages where this user is the sender (messages they sent)
-      apiCall(`/api/load-messages/${otherUserId}`)
-        .then(res => res.json())
-        .then(data => {
-          console.log(`💬 Messages where I am sender (convo ${otherUserId}):`, data);
-          if (data.messages && data.messages.length > 0) {
-            // Filter messages from current user
-            const fromMe = data.messages.filter(msg => msg.sender === "me");
-            console.log(`Messages from me to ${active.name}:`, fromMe);
-            
-            setMessages(prev => {
-              const existing = prev[otherUserId] || [];
-              const newMessages = [...existing, ...fromMe];
-              // Remove duplicates by id
-              const unique = newMessages.filter((msg, index, self) => 
-                index === self.findIndex(m => m.id === msg.id)
-              );
-              // Sort by timestamp
-              unique.sort((a, b) => a.id - b.id);
-              return { ...prev, [otherUserId]: unique };
-            });
-          } else if (!messages[otherUserId]) {
-            setMessages(prev => ({ ...prev, [otherUserId]: [] }));
-          }
-        })
-        .catch(err => console.error(err));
+      refreshMessages();
     }
   }, [active.id, user]);
+
+  // Auto-refresh messages every 5 seconds
+  useEffect(() => {
+    if (!active.id) return;
+    
+    const interval = setInterval(() => {
+      console.log("🔄 Auto-refreshing messages...");
+      refreshMessages();
+    }, 5000);
+    
+    return () => clearInterval(interval);
+  }, [active.id]);
 
   // Scroll to bottom
   useEffect(() => {
@@ -358,6 +362,7 @@ function ChatApp({ user, onLogout }) {
       type: "text" 
     };
     
+    // Add message to UI immediately
     setMessages(prev => ({ 
       ...prev, 
       [active.id]: [...(prev[active.id] ?? []), msg] 
@@ -365,6 +370,7 @@ function ChatApp({ user, onLogout }) {
     setInput("");
     
     try {
+      // Save to backend
       await apiCall('/api/save-message', {
         method: 'POST',
         body: JSON.stringify({
@@ -373,6 +379,10 @@ function ChatApp({ user, onLogout }) {
           text: text.trim()
         })
       });
+      
+      // After saving, reload messages
+      await refreshMessages();
+      
     } catch (err) {
       console.error("Error saving message:", err);
     }
@@ -480,9 +490,18 @@ function ChatApp({ user, onLogout }) {
             <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
             {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>Online</p>}
           </div>
-          <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
-            ✦ AI Tools
-          </button>
+          <div>
+            <button 
+              onClick={refreshMessages} 
+              style={{ background: "#161B22", color: "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 12px", cursor: "pointer", marginRight: "8px" }}
+              title="Refresh messages"
+            >
+              🔄
+            </button>
+            <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+              ✦ AI Tools
+            </button>
+          </div>
         </div>
 
         <div style={{ 
