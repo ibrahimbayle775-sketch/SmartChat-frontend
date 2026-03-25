@@ -5,23 +5,24 @@ import { useState, useRef, useEffect } from "react";
 const uid = () => Math.random().toString(36).slice(2, 10);
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
-// Store token in localStorage
-let authToken = localStorage.getItem('token');
-
 async function apiCall(endpoint, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
     ...options.headers
   };
   
-  if (authToken) {
-    headers['Authorization'] = `Bearer ${authToken}`;
+  // Always get the latest token from localStorage
+  const token = localStorage.getItem('token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+    console.log("✅ Adding token to request:", endpoint);
+  } else {
+    console.log("❌ No token found for:", endpoint);
   }
   
   const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
     ...options,
     headers,
-    credentials: 'omit'  // No cookies needed with JWT
   });
   
   return response;
@@ -162,8 +163,8 @@ function AuthPage({ onLogin }) {
       } else {
         // Save token to localStorage
         if (result.token) {
+          console.log("💾 Saving token to localStorage");
           localStorage.setItem('token', result.token);
-          window.authToken = result.token;
         }
         onLogin(result.user);
       }
@@ -238,33 +239,35 @@ function ChatApp({ user, onLogout }) {
 
   // Fetch all users
   useEffect(() => {
-    console.log("Fetching users...");
+    console.log("🔍 Fetching users...");
     apiCall('/api/users')
-      .then(res => res.json())
-      .then(data => {
-        console.log("Users API response:", data);
-        if (data.users) {
-          console.log("Found users:", data.users);
+      .then(async res => {
+        const data = await res.json();
+        console.log("📡 Users API response status:", res.status);
+        console.log("📡 Users API response data:", data);
+        if (res.ok && data.users) {
+          console.log("✅ Found users:", data.users);
           setAllUsers(data.users);
         } else if (data.error) {
-          console.log("Error from server:", data.error);
-          if (data.error === 'Token is missing' || data.error === 'Invalid token') {
+          console.log("❌ Error from server:", data.error);
+          if (data.error === 'Token is missing' || data.error === 'Invalid token' || res.status === 401) {
+            console.log("🔄 Token invalid, logging out...");
             localStorage.removeItem('token');
             onLogout();
           }
         }
       })
-      .catch(err => console.error("Fetch error:", err));
+      .catch(err => console.error("❌ Fetch error:", err));
   }, []);
 
   // Load messages for current conversation
   useEffect(() => {
     if (active.id) {
-      console.log("Loading messages for conversation:", active.id);
+      console.log("📩 Loading messages for conversation:", active.id);
       apiCall(`/api/load-messages/${active.id}`)
         .then(res => res.json())
         .then(data => {
-          console.log("Messages response:", data);
+          console.log("💬 Messages response:", data);
           if (data.messages && data.messages.length > 0) {
             const loadedMessages = data.messages.map(msg => ({
               id: msg.id,
@@ -319,6 +322,7 @@ function ChatApp({ user, onLogout }) {
   };
 
   const handleLogout = () => {
+    console.log("🚪 Logging out...");
     localStorage.removeItem('token');
     onLogout();
   };
@@ -326,8 +330,8 @@ function ChatApp({ user, onLogout }) {
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
-  console.log("Current allUsers:", allUsers);
-  console.log("Current user:", user);
+  console.log("👥 Current allUsers:", allUsers);
+  console.log("👤 Current user:", user);
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
@@ -454,19 +458,23 @@ export default function SmartChat() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    console.log("🔑 Token from localStorage:", token ? "Found" : "Not found");
+    
     if (!token) {
       setLoading(false);
       return;
     }
     
-    console.log("Checking session...");
+    console.log("🔍 Checking session...");
     apiCall('/api/me')
-      .then(res => res.json())
-      .then(data => { 
-        console.log("Session data:", data);
-        if (data.user) {
+      .then(async res => {
+        const data = await res.json();
+        console.log("📡 Session response status:", res.status);
+        console.log("📡 Session data:", data);
+        if (res.ok && data.user) {
           setUser(data.user);
-        } else if (data.error === 'Token is missing' || data.error === 'Invalid token') {
+        } else if (res.status === 401 || data.error === 'Token is missing' || data.error === 'Invalid token') {
+          console.log("🔄 Token invalid, clearing...");
           localStorage.removeItem('token');
         }
       })
