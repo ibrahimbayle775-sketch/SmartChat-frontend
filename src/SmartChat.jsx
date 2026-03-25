@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars */
 import { useState, useRef, useEffect } from "react";
 
 // Helper functions
@@ -35,7 +36,7 @@ function Avatar({ label, color, size = 38 }) {
 }
 
 // Message Bubble Component
-function Bubble({ msg, contact, isMine, onAnalyze }) {
+function Bubble({ msg, contact, isMine }) {
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
   const [showActions, setShowActions] = useState(false);
@@ -377,7 +378,7 @@ function ChatApp({ user, onLogout }) {
               const isMine = msg.from === "me";
               const contactName = isMine ? "You" : activeName;
               const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
-              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} onAnalyze={() => setShowAI(true)} />;
+              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
             })
           )}
           <div ref={bottomRef} />
