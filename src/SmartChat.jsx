@@ -206,8 +206,6 @@ function ChatApp({ user, onLogout }) {
   const [input, setInput] = useState("");
   const [showAI, setShowAI] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
-  const [showUserList, setShowUserList] = useState(false);
-  const [chats, setChats] = useState([]);
   const bottomRef = useRef();
 
   // Fetch all users when component loads
@@ -239,6 +237,9 @@ function ChatApp({ user, onLogout }) {
               type: "text"
             }));
             setMessages(prev => ({ ...prev, [active.id]: loadedMessages }));
+          } else if (!messages[active.id]) {
+            // Initialize empty messages for this conversation
+            setMessages(prev => ({ ...prev, [active.id]: [] }));
           }
         })
         .catch(err => console.error(err));
@@ -284,18 +285,6 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
-  const startNewChat = (userId, username) => {
-    setActive({ id: userId, type: "dm", name: username });
-    setShowUserList(false);
-    // Initialize empty messages for this conversation if not exists
-    setMessages(prev => {
-      if (!prev[userId]) {
-        return { ...prev, [userId]: [] };
-      }
-      return prev;
-    });
-  };
-
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
 
@@ -308,37 +297,31 @@ function ChatApp({ user, onLogout }) {
           <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>Welcome, {user.username}!</p>
         </div>
         
-        <div style={{ padding: "16px" }}>
-          <button 
-            onClick={() => setShowUserList(true)}
-            style={{
-              width: "100%",
-              padding: "10px",
-              background: "#E8A838",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: "bold",
-              fontSize: "14px"
-            }}
-          >
-            + New Chat
-          </button>
+        <div style={{ padding: "16px", borderBottom: "1px solid #1E293B" }}>
+          <div style={{ textAlign: "center", color: "#64748B", fontSize: "12px" }}>
+            Click any user to start chatting
+          </div>
         </div>
         
         <div style={{ padding: "0 16px", borderBottom: "1px solid #1E293B", marginBottom: "10px" }}>
-          <h4 style={{ color: "#64748B", margin: "0 0 8px 0", fontSize: "12px" }}>YOUR CHATS</h4>
+          <h4 style={{ color: "#64748B", margin: "0 0 8px 0", fontSize: "12px" }}>ALL USERS</h4>
         </div>
         
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {Object.keys(messages).filter(key => messages[key]?.length > 0).map(chatId => {
-            const isActive = active.id === chatId;
-            const chatUser = allUsers.find(u => u.id.toString() === chatId);
-            const lastMsg = messages[chatId]?.[messages[chatId].length - 1];
+          {allUsers.filter(u => u.username !== user.username).map(otherUser => {
+            const isActive = active.id === otherUser.id.toString();
+            const hasMessages = messages[otherUser.id] && messages[otherUser.id].length > 0;
+            const lastMsg = hasMessages ? messages[otherUser.id][messages[otherUser.id].length - 1] : null;
+            
             return (
               <div 
-                key={chatId} 
-                onClick={() => setActive({ id: chatId, type: "dm", name: chatUser?.username })}
+                key={otherUser.id} 
+                onClick={() => {
+                  setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
+                  if (!messages[otherUser.id]) {
+                    setMessages(prev => ({ ...prev, [otherUser.id]: [] }));
+                  }
+                }}
                 style={{ 
                   display: "flex", 
                   alignItems: "center", 
@@ -346,19 +329,28 @@ function ChatApp({ user, onLogout }) {
                   padding: "12px 16px", 
                   background: isActive ? "#1E293B" : "transparent", 
                   cursor: "pointer",
-                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
-                }}>
-                <Avatar label={chatUser?.username?.substring(0,2).toUpperCase() || "?"} color="#E8A838" size={40} />
+                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent",
+                  transition: "background 0.2s"
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = "#161B22"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+              >
+                <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{chatUser?.username || "Unknown"}</div>
-                  {lastMsg && <div style={{ fontSize: 11, color: "#64748B" }}>{lastMsg.text.substring(0, 30)}</div>}
+                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{otherUser.username}</div>
+                  <div style={{ fontSize: 11, color: "#64748B" }}>
+                    {lastMsg ? lastMsg.text.substring(0, 30) : "Click to start chatting"}
+                  </div>
                 </div>
+                {!hasMessages && (
+                  <span style={{ fontSize: 10, background: "#E8A838", color: "#0F172A", padding: "2px 6px", borderRadius: 10 }}>new</span>
+                )}
               </div>
             );
           })}
-          {Object.keys(messages).filter(key => messages[key]?.length > 0).length === 0 && (
+          {allUsers.filter(u => u.username !== user.username).length === 0 && (
             <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
-              No chats yet. Click "+ New Chat" to start!
+              No other users yet. Share this app with friends!
             </div>
           )}
         </div>
@@ -386,7 +378,7 @@ function ChatApp({ user, onLogout }) {
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
-              <p>Click "+ New Chat" to start messaging other users.</p>
+              <p>Click any user from the sidebar to start chatting.</p>
             </div>
           ) : activeMessages.length === 0 ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
@@ -408,7 +400,7 @@ function ChatApp({ user, onLogout }) {
             value={input} 
             onChange={e => setInput(e.target.value)} 
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && active.id) { e.preventDefault(); send(input); } }} 
-            placeholder={active.id ? "Type a message..." : "Select a chat to start messaging"}
+            placeholder={active.id ? "Type a message..." : "Select a user to start messaging"}
             disabled={!active.id}
             rows={1} 
             style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
@@ -420,60 +412,6 @@ function ChatApp({ user, onLogout }) {
 
         {showAI && <AIPanel messages={activeMessages} onClose={() => setShowAI(false)} />}
       </main>
-
-      {/* New Chat Modal */}
-      {showUserList && (
-        <div style={{
-          position: "fixed",
-          top: "50%",
-          left: "50%",
-          transform: "translate(-50%, -50%)",
-          background: "#0D1117",
-          border: "1px solid #1E293B",
-          borderRadius: "12px",
-          padding: "20px",
-          width: "320px",
-          zIndex: 2000,
-          boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-            <h3 style={{ color: "#E8A838", margin: 0 }}>Start New Chat</h3>
-            <button onClick={() => setShowUserList(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>✕</button>
-          </div>
-          <div style={{ maxHeight: "400px", overflowY: "auto" }}>
-            {allUsers.filter(u => u.username !== user.username).map(otherUser => (
-              <div
-                key={otherUser.id}
-                onClick={() => startNewChat(otherUser.id.toString(), otherUser.username)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "12px",
-                  padding: "12px",
-                  margin: "4px 0",
-                  background: "#161B22",
-                  borderRadius: "8px",
-                  cursor: "pointer",
-                  transition: "background 0.2s"
-                }}
-                onMouseEnter={e => e.currentTarget.style.background = "#1E293B"}
-                onMouseLeave={e => e.currentTarget.style.background = "#161B22"}
-              >
-                <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
-                <div>
-                  <div style={{ color: "#E2E8F0", fontWeight: "bold" }}>{otherUser.username}</div>
-                  <div style={{ color: "#64748B", fontSize: "12px" }}>Click to start chatting</div>
-                </div>
-              </div>
-            ))}
-            {allUsers.filter(u => u.username !== user.username).length === 0 && (
-              <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
-                No other users yet. Share this app with friends!
-              </div>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
