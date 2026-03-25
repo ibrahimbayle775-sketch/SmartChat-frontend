@@ -14,9 +14,6 @@ async function apiCall(endpoint, options = {}) {
   const token = localStorage.getItem('token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
-    console.log("✅ Adding token to request:", endpoint);
-  } else {
-    console.log("❌ No token found for:", endpoint);
   }
   
   const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
@@ -37,7 +34,6 @@ async function callClaude(systemPrompt, userContent, maxTokens = 512) {
     if (data.content) return data.content;
     return "Sorry, couldn't get a response.";
   } catch (error) {
-    console.error("Claude error:", error);
     return "Oops! Can't connect to backend.";
   }
 }
@@ -163,8 +159,6 @@ function AuthPage({ onLogin }) {
     const data = isLogin ? { username, password } : { username, email, password };
     
     try {
-      console.log("Sending to:", `https://smartchat-backend-4kan.onrender.com${endpoint}`);
-      
       localStorage.removeItem('token');
       
       const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
@@ -174,19 +168,16 @@ function AuthPage({ onLogin }) {
       });
       
       const result = await response.json();
-      console.log("Response:", result);
       
       if (!response.ok || result.error) {
         setError(result.error || "Something went wrong");
       } else {
         if (result.token) {
-          console.log("💾 Saving NEW token to localStorage");
           localStorage.setItem('token', result.token);
         }
         onLogin(result.user);
       }
     } catch (err) {
-      console.error("Fetch error:", err);
       setError("Cannot connect to server. Please try again.");
     } finally {
       setLoading(false);
@@ -253,153 +244,135 @@ function ChatApp({ user, onLogout }) {
   const [showAI, setShowAI] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
   const bottomRef = useRef();
+  const pollingRef = useRef(null);
 
   // Fetch all users
   useEffect(() => {
-    console.log("🔍 Fetching users...");
     const token = localStorage.getItem('token');
-    if (!token) {
-      console.log("❌ No token, skipping users fetch");
-      return;
-    }
+    if (!token) return;
     
     apiCall('/api/users')
       .then(async res => {
         const data = await res.json();
-        console.log("📡 Users API response status:", res.status);
         if (res.ok && data.users) {
-          console.log("✅ Found users:", data.users);
           setAllUsers(data.users);
-        } else if (res.status === 401) {
-          console.log("⚠️ Users API returned 401 - token may be invalid");
-          setAllUsers([]);
-        } else if (data.error) {
-          console.log("❌ Error from server:", data.error);
         }
       })
-      .catch(err => console.error("❌ Fetch error:", err));
+      .catch(err => console.error("Fetch error:", err));
   }, []);
 
-  // Function to refresh messages
-  const refreshMessages = async () => {
-    if (!active.id || !user) return;
-    
-    const otherUserId = active.id;
-    const currentUserId = user.id.toString();
-    
-    console.log("🔄 Manually refreshing messages...");
-    
+  // FIXED: loadMessages function - gets messages for the conversation
+  const loadMessages = async (otherUserId) => {
+    if (!otherUserId || !user) return;
+
     try {
-      // Load messages sent to current user
-      const response1 = await apiCall(`/api/load-messages/${currentUserId}`);
-      const data1 = await response1.json();
-      
-      // Load messages sent by current user
-      const response2 = await apiCall(`/api/load-messages/${otherUserId}`);
-      const data2 = await response2.json();
-      
-      let allMessages = [];
-      
-      if (data1.messages) {
-        const fromOther = data1.messages.filter(msg => msg.sender === otherUserId);
-        allMessages = [...allMessages, ...fromOther];
-      }
-      
-      if (data2.messages) {
-        const fromMe = data2.messages.filter(msg => msg.sender === "me");
-        allMessages = [...allMessages, ...fromMe];
-      }
-      
-      const formattedMessages = allMessages.map(msg => ({
+      const response = await apiCall(`/api/load-messages/${otherUserId}`);
+      const data = await response.json();
+
+      if (!data.messages) return;
+
+      const formattedMessages = data.messages.map(msg => ({
         id: msg.id,
-        from: msg.sender === "me" ? "me" : otherUserId,
+        from: msg.sender === user.id.toString() ? "me" : otherUserId,
         text: msg.text,
         time: msg.timestamp,
         type: "text"
       }));
-      
+
       formattedMessages.sort((a, b) => a.id - b.id);
-      
-      setMessages(prev => ({ ...prev, [otherUserId]: formattedMessages }));
-      console.log(`✅ Refreshed ${formattedMessages.length} messages`);
+
+      setMessages(prev => ({
+        ...prev,
+        [otherUserId]: formattedMessages
+      }));
+
     } catch (err) {
-      console.error("Error refreshing messages:", err);
+      console.error("Error loading messages:", err);
     }
   };
 
-  // Load messages for current conversation
+  // Load messages when selected user changes
   useEffect(() => {
     if (active.id && user) {
-      refreshMessages();
+      loadMessages(active.id);
     }
   }, [active.id, user]);
 
-  // Auto-refresh messages every 5 seconds
+  // Poll for new messages every 2 seconds
   useEffect(() => {
-    if (!active.id) return;
+    if (!active.id || !user) return;
     
-    const interval = setInterval(() => {
-      console.log("🔄 Auto-refreshing messages...");
-      refreshMessages();
-    }, 5000);
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
     
-    return () => clearInterval(interval);
-  }, [active.id]);
+    pollingRef.current = setInterval(() => {
+      loadMessages(active.id);
+    }, 2000);
+    
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [active.id, user]);
 
-  // Scroll to bottom
+  // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
 
+  // FIXED: send function - saves message correctly
   const send = async (text) => {
     if (!text.trim() || !active.id) return;
-    
-    const msg = { 
-      id: uid(), 
-      from: "me", 
-      text: text.trim(), 
-      time: now(), 
-      type: "text" 
+
+    const msg = {
+      id: uid(),
+      from: "me",
+      text: text.trim(),
+      time: now(),
+      type: "text"
     };
-    
-    // Add message to UI immediately
-    setMessages(prev => ({ 
-      ...prev, 
-      [active.id]: [...(prev[active.id] ?? []), msg] 
+
+    setMessages(prev => ({
+      ...prev,
+      [active.id]: [...(prev[active.id] ?? []), msg]
     }));
+
     setInput("");
-    
+
     try {
-      // Save to backend
       await apiCall('/api/save-message', {
         method: 'POST',
         body: JSON.stringify({
           conversation_id: active.id,
-          sender: "me",
+          sender: user.id.toString(),
           text: text.trim()
         })
       });
-      
-      // After saving, reload messages
-      await refreshMessages();
-      
+
+      await loadMessages(active.id);
+
     } catch (err) {
       console.error("Error saving message:", err);
+      setMessages(prev => ({
+        ...prev,
+        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
+      }));
     }
   };
 
   const handleLogout = () => {
-    console.log("🚪 Logging out...");
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
     localStorage.removeItem('token');
     onLogout();
   };
 
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
-
-  console.log(`🖥️ Rendering chat for ${activeName}, messages count: ${activeMessages.length}`);
-  console.log("👥 Current allUsers:", allUsers);
-  console.log("👤 Current user:", user);
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
@@ -423,10 +396,7 @@ function ChatApp({ user, onLogout }) {
             return (
               <div 
                 key={otherUser.id} 
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
+                onClick={() => {
                   setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
                   if (!messages[otherUser.id]) {
                     setMessages(prev => ({ ...prev, [otherUser.id]: [] }));
@@ -492,7 +462,7 @@ function ChatApp({ user, onLogout }) {
           </div>
           <div>
             <button 
-              onClick={refreshMessages} 
+              onClick={() => active.id && loadMessages(active.id)} 
               style={{ background: "#161B22", color: "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 12px", cursor: "pointer", marginRight: "8px" }}
               title="Refresh messages"
             >
@@ -567,24 +537,18 @@ export default function SmartChat() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    console.log("🔑 Token from localStorage:", token ? `Found (${token.substring(0, 20)}...)` : "Not found");
     
     if (!token) {
       setLoading(false);
       return;
     }
     
-    console.log("🔍 Checking session...");
     apiCall('/api/me')
       .then(async res => {
         const data = await res.json();
-        console.log("📡 Session response status:", res.status);
-        console.log("📡 Session data:", data);
         if (res.ok && data.user) {
-          console.log("✅ Session valid for user:", data.user.username);
           setUser(data.user);
         } else {
-          console.log("❌ Session invalid, clearing token");
           localStorage.removeItem('token');
         }
       })
