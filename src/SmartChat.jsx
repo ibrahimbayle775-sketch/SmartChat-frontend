@@ -56,7 +56,7 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
-// Message Bubble Component - Fixed Layout
+// Message Bubble Component
 function Bubble({ msg, contact, isMine }) {
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
@@ -361,7 +361,7 @@ function ChatApp({ user, onLogout }) {
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
       {/* Sidebar */}
-      <aside style={{ width: 280, background: "#0D1117", borderRight: "1px solid #1E293B", display: "flex", flexDirection: "column" }}>
+      <aside style={{ width: 280, background: "#0D1117", borderRight: "1px solid #1E293B", display: "flex", flexDirection: "column", flexShrink: 0 }}>
         <div style={{ padding: 20, borderBottom: "1px solid #1E293B" }}>
           <h2 style={{ color: "#E8A838", margin: 0 }}>SmartChat</h2>
           <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>Welcome, {user.username}!</p>
@@ -426,8 +426,23 @@ function ChatApp({ user, onLogout }) {
       </aside>
 
       {/* Main Chat Area */}
-      <main style={{ flex: 1, display: "flex", flexDirection: "column" }}>
-        <div style={{ padding: "16px 20px", borderBottom: "1px solid #1E293B", background: "#0D1117", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <main style={{ 
+        flex: 1, 
+        display: "flex", 
+        flexDirection: "column",
+        minHeight: 0,
+        position: "relative",
+        overflow: "hidden"
+      }}>
+        <div style={{ 
+          padding: "16px 20px", 
+          borderBottom: "1px solid #1E293B", 
+          background: "#0D1117", 
+          display: "flex", 
+          justifyContent: "space-between", 
+          alignItems: "center",
+          flexShrink: 0
+        }}>
           <div>
             <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
             {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>Online</p>}
@@ -437,7 +452,14 @@ function ChatApp({ user, onLogout }) {
           </button>
         </div>
 
-        <div style={{ flex: 1, overflowY: "auto", padding: "20px 24px" }}>
+        <div style={{ 
+          flex: 1, 
+          overflowY: "auto", 
+          padding: "20px 24px",
+          minHeight: 0,
+          maxHeight: "100%",
+          background: "#080C12"
+        }}>
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
@@ -458,7 +480,14 @@ function ChatApp({ user, onLogout }) {
           <div ref={bottomRef} />
         </div>
 
-        <div style={{ padding: "16px 20px", borderTop: "1px solid #1E293B", background: "#0D1117", display: "flex", gap: 12 }}>
+        <div style={{ 
+          padding: "16px 20px", 
+          borderTop: "1px solid #1E293B", 
+          background: "#0D1117", 
+          display: "flex", 
+          gap: 12,
+          flexShrink: 0
+        }}>
           <textarea 
             value={input} 
             onChange={e => setInput(e.target.value)} 
