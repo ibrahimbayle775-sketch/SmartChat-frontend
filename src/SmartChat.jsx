@@ -365,7 +365,9 @@ function ChatApp({ user, onLogout }) {
             return (
               <div 
                 key={otherUser.id} 
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
                   console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
                   setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
                   if (!messages[otherUser.id]) {
@@ -431,12 +433,18 @@ function ChatApp({ user, onLogout }) {
               <p>No messages yet. Send a message to start the conversation!</p>
             </div>
           ) : (
-            activeMessages.map(msg => {
-              const isMine = msg.from === "me";
-              const contactName = isMine ? "You" : activeName;
-              const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
-              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
-            })
+            <>
+              {(() => {
+                console.log("💬 RENDERING MESSAGES:", activeMessages);
+                return activeMessages.map(msg => {
+                  console.log("🎨 RENDERING MESSAGE:", msg.text, "from:", msg.from);
+                  const isMine = msg.from === "me";
+                  const contactName = isMine ? "You" : activeName;
+                  const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
+                  return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
+                });
+              })()}
+            </>
           )}
           <div ref={bottomRef} />
         </div>
