@@ -399,24 +399,82 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
+  // Send message function with multimedia support
+  const send = async (text, msgType = "text", fileData = null) => {
+    if (active.type !== "dm") return;
+    if (msgType === "text" && (!text.trim())) return;
+    if (!active.id) return;
+
+    const msg = {
+      id: uid(),
+      from: "me",
+      time: now(),
+      type: msgType
+    };
+
+    if (msgType === "text") {
+      msg.text = text.trim();
+    } else if (msgType === "image") {
+      msg.src = fileData;
+      msg.text = "";
+    } else if (msgType === "file") {
+      msg.url = fileData.url;
+      msg.filename = fileData.name;
+      msg.text = "";
+    }
+
+    // Optimistically add to UI
+    setMessages(prev => ({
+      ...prev,
+      [active.id]: [...(prev[active.id] ?? []), msg]
+    }));
+    
+    if (msgType === "text") {
+      setInput("");
+    }
+
+    try {
+      const payload = {
+        sender: user.id.toString(),
+        receiver: active.id.toString(),
+        type: msgType
+      };
+      
+      if (msgType === "text") {
+        payload.text = text.trim();
+      } else if (msgType === "image") {
+        payload.file_url = fileData;
+        payload.text = "";
+      } else if (msgType === "file") {
+        payload.file_url = fileData.url;
+        payload.filename = fileData.name;
+        payload.text = "";
+      }
+      
+      await apiCall('/api/save-message', {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+      
+      await loadMessages(active.id);
+      
+    } catch (err) {
+      console.error("Error saving message:", err);
+      // Rollback if failed
+      setMessages(prev => ({
+        ...prev,
+        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
+      }));
+      alert("Failed to send message. Please try again.");
+    }
+  };
+
   // File upload handlers
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
       const fileUrl = URL.createObjectURL(file);
-      const msg = {
-        id: uid(),
-        from: "me",
-        type: "file",
-        filename: file.name,
-        url: fileUrl,
-        size: file.size,
-        time: now()
-      };
-      setMessages(prev => ({ 
-        ...prev, 
-        [active.id]: [...(prev[active.id] ?? []), msg] 
-      }));
+      send("", "file", { name: file.name, url: fileUrl });
     });
     e.target.value = "";
   };
@@ -426,25 +484,14 @@ function ChatApp({ user, onLogout }) {
     files.forEach(file => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        const msg = {
-          id: uid(),
-          from: "me",
-          type: "image",
-          src: ev.target.result,
-          filename: file.name,
-          time: now()
-        };
-        setMessages(prev => ({ 
-          ...prev, 
-          [active.id]: [...(prev[active.id] ?? []), msg] 
-        }));
+        send("", "image", ev.target.result);
       };
       reader.readAsDataURL(file);
     });
     e.target.value = "";
   };
 
-  // Load messages function
+  // Load messages function with multimedia parsing
   const loadMessages = async (otherUserId) => {
     if (!otherUserId || !user) return;
     console.log("🔍 Loading messages with user:", otherUserId);
@@ -455,13 +502,32 @@ function ChatApp({ user, onLogout }) {
       
       if (!data.messages) return;
       
-      const formatted = data.messages.map(msg => ({
-        id: msg.id,
-        from: msg.sender === user.id.toString() ? "me" : msg.sender,
-        text: msg.text,
-        time: msg.timestamp || now(),
-        type: "text"
-      })).sort((a, b) => a.id - b.id);
+      const formatted = data.messages.map(msg => {
+        let parsedMsg = {
+          id: msg.id,
+          from: msg.sender === user.id.toString() ? "me" : msg.sender,
+          time: msg.timestamp || now(),
+          type: "text"
+        };
+        
+        // Parse multimedia messages
+        if (msg.text && msg.text.startsWith('[IMAGE:')) {
+          const url = msg.text.substring(7, msg.text.length - 1);
+          parsedMsg.type = "image";
+          parsedMsg.src = url;
+          parsedMsg.text = "";
+        } else if (msg.text && msg.text.startsWith('[FILE:')) {
+          const parts = msg.text.substring(6, msg.text.length - 1).split(':');
+          parsedMsg.type = "file";
+          parsedMsg.filename = parts[0];
+          parsedMsg.url = parts[1];
+          parsedMsg.text = "";
+        } else {
+          parsedMsg.text = msg.text;
+        }
+        
+        return parsedMsg;
+      }).sort((a, b) => a.id - b.id);
       
       setMessages(prev => ({ ...prev, [otherUserId]: formatted }));
       console.log(`✅ Loaded ${formatted.length} messages for user ${otherUserId}`);
@@ -502,76 +568,6 @@ function ChatApp({ user, onLogout }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
-
-  // Send message function - FIXED for groups
-  const send = async (text) => {
-    if (!text.trim() || !active.id) return;
-
-    const msg = {
-      id: uid(),
-      from: "me",
-      text: text.trim(),
-      time: now(),
-      type: "text"
-    };
-
-    // Optimistically add to UI
-    setMessages(prev => ({
-      ...prev,
-      [active.id]: [...(prev[active.id] ?? []), msg]
-    }));
-    setInput("");
-
-    try {
-      if (active.type === "dm") {
-        // Direct message
-        await apiCall('/api/save-message', {
-          method: 'POST',
-          body: JSON.stringify({
-            sender: user.id.toString(),
-            receiver: active.id.toString(),
-            text: text.trim()
-          })
-        });
-        await loadMessages(active.id);
-      } else if (active.type === "group") {
-        // Group message - extract group ID from active.id (format: "group_123")
-        const groupId = active.id.split('_')[1];
-        console.log(`📤 Sending group message to group ${groupId}: ${text}`);
-        
-        const response = await apiCall(`/api/groups/${groupId}/messages`, {
-          method: 'POST',
-          body: JSON.stringify({ text: text.trim() })
-        });
-        
-        const data = await response.json();
-        console.log("Group message response:", data);
-        
-        // Reload group messages
-        const messagesRes = await apiCall(`/api/groups/${groupId}/messages`);
-        const messagesData = await messagesRes.json();
-        
-        if (messagesData.messages) {
-          const formatted = messagesData.messages.map(msg => ({
-            id: msg.id,
-            from: msg.sender === user.id.toString() ? "me" : msg.sender,
-            text: msg.text,
-            time: msg.timestamp,
-            type: "text"
-          }));
-          setMessages(prev => ({ ...prev, [active.id]: formatted }));
-        }
-      }
-    } catch (err) {
-      console.error("Error saving message:", err);
-      // Rollback if failed
-      setMessages(prev => ({
-        ...prev,
-        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
-      }));
-      alert("Failed to send message. Please try again.");
-    }
-  };
 
   const handleLogout = () => {
     if (pollingRef.current) {
@@ -1069,17 +1065,17 @@ function ChatApp({ user, onLogout }) {
             value={input} 
             onChange={e => setInput(e.target.value)} 
             onKeyDown={e => { 
-              if (e.key === "Enter" && !e.shiftKey && active.id) { 
+              if (e.key === "Enter" && !e.shiftKey && active.id && active.type === "dm") { 
                 e.preventDefault(); 
-                send(input); 
+                send(input, "text", null); 
               } 
             }} 
-            placeholder={active.id ? "Type a message..." : "Select a chat to start messaging"}
-            disabled={!active.id}
+            placeholder={active.id && active.type === "dm" ? "Type a message..." : "Select a direct chat to message"}
+            disabled={!active.id || active.type !== "dm"}
             rows={1} 
-            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
+            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: (active.id && active.type === "dm") ? 1 : 0.5 }} 
           />
-          <button onClick={() => send(input)} disabled={!input.trim() || !active.id} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id) ? 0.5 : 1 }}>
+          <button onClick={() => send(input, "text", null)} disabled={!input.trim() || !active.id || active.type !== "dm"} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id || active.type !== "dm") ? 0.5 : 1 }}>
             ➤
           </button>
         </div>
