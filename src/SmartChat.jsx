@@ -285,6 +285,11 @@ function ChatApp({ user, onLogout }) {
   const [groups, setGroups] = useState([]);
   const [sideTab, setSideTab] = useState("dm");
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [selectedGroupForMembers, setSelectedGroupForMembers] = useState(null);
+  const [groupMembers, setGroupMembers] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [addingMember, setAddingMember] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
   const [creatingGroup, setCreatingGroup] = useState(false);
@@ -323,6 +328,19 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
+  // Fetch group members
+  const fetchGroupMembers = async (groupId) => {
+    try {
+      const res = await apiCall(`/api/groups/${groupId}/members`);
+      const data = await res.json();
+      if (data.members) {
+        setGroupMembers(data.members);
+      }
+    } catch (err) {
+      console.error("Error fetching group members:", err);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchGroups();
@@ -347,12 +365,39 @@ function ChatApp({ user, onLogout }) {
         setShowCreateGroup(false);
         setNewGroupName("");
         setNewGroupDesc("");
+        alert("✅ Group created successfully!");
       }
     } catch (err) {
       console.error("Error creating group:", err);
       alert("Failed to create group");
     } finally {
       setCreatingGroup(false);
+    }
+  };
+
+  // Add member to group
+  const addMemberToGroup = async (groupId, userId, username) => {
+    setAddingMember(true);
+    try {
+      const res = await apiCall(`/api/groups/${groupId}/members`, {
+        method: 'POST',
+        body: JSON.stringify({ user_id: userId })
+      });
+      const data = await res.json();
+      if (data.message) {
+        alert(`✅ ${username} added to group!`);
+        fetchGroupMembers(groupId);
+        // Refresh groups list for the added member
+        fetchGroups();
+        setShowAddMember(false);
+      } else if (data.error) {
+        alert(`❌ ${data.error}`);
+      }
+    } catch (err) {
+      console.error("Error adding member:", err);
+      alert("Failed to add member");
+    } finally {
+      setAddingMember(false);
     }
   };
 
@@ -657,6 +702,7 @@ function ChatApp({ user, onLogout }) {
                       if (!messages[`group_${g.id}`]) {
                         setMessages(prev => ({ ...prev, [`group_${g.id}`]: [] }));
                       }
+                      fetchGroupMembers(g.id);
                     }}
                     style={{ 
                       display: "flex", 
@@ -671,7 +717,7 @@ function ChatApp({ user, onLogout }) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div>
                       <div style={{ fontSize: 11, color: "#64748B" }}>
-                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : "Click to chat"}
+                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : `${g.members?.length || 0} members`}
                       </div>
                     </div>
                   </div>
@@ -766,6 +812,85 @@ function ChatApp({ user, onLogout }) {
         </div>
       )}
 
+      {/* Add Member Modal */}
+      {showAddMember && (
+        <div style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "#0D1117",
+          border: "1px solid #1E293B",
+          borderRadius: "12px",
+          padding: "24px",
+          width: "320px",
+          zIndex: 2000,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
+            <h3 style={{ color: "#E8A838", margin: 0 }}>Add Members</h3>
+            <button onClick={() => setShowAddMember(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>✕</button>
+          </div>
+          
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "12px", color: "#64748B", marginBottom: "8px" }}>Current Members:</div>
+            {groupMembers.map(m => (
+              <div key={m.id} style={{ padding: "4px 0", color: "#E2E8F0", fontSize: "13px" }}>
+                👤 {m.username}
+              </div>
+            ))}
+          </div>
+          
+          <div style={{ marginBottom: "16px" }}>
+            <div style={{ fontSize: "12px", color: "#64748B", marginBottom: "8px" }}>Add New Member:</div>
+            <select 
+              onChange={(e) => {
+                const userId = e.target.value;
+                const userToAdd = allUsers.find(u => u.id.toString() === userId);
+                if (userToAdd && userId) {
+                  addMemberToGroup(parseInt(selectedGroupForMembers), parseInt(userId), userToAdd.username);
+                }
+              }}
+              disabled={addingMember}
+              style={{
+                width: "100%",
+                padding: "10px",
+                background: "#161B22",
+                border: "1px solid #2D3748",
+                borderRadius: "8px",
+                color: "#E2E8F0",
+                cursor: "pointer"
+              }}
+            >
+              <option value="">Select a user to add...</option>
+              {allUsers.filter(u => u.username !== user.username && !groupMembers.some(m => m.id === u.id)).map(u => (
+                <option key={u.id} value={u.id}>{u.username}</option>
+              ))}
+            </select>
+            {allUsers.filter(u => u.username !== user.username && !groupMembers.some(m => m.id === u.id)).length === 0 && (
+              <div style={{ fontSize: "11px", color: "#64748B", marginTop: "8px" }}>
+                No other users available to add
+              </div>
+            )}
+          </div>
+          
+          <button
+            onClick={() => setShowAddMember(false)}
+            style={{
+              width: "100%",
+              padding: "10px",
+              background: "#1E293B",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              color: "#E2E8F0"
+            }}
+          >
+            Close
+          </button>
+        </div>
+      )}
+
       {/* Main Chat Area */}
       <main style={{ 
         flex: 1, 
@@ -787,12 +912,35 @@ function ChatApp({ user, onLogout }) {
           <div>
             <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
             {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>
-              {active.type === "group" ? "Group Chat" : "Online"}
+              {active.type === "group" ? `${groupMembers.length} members` : "Online"}
             </p>}
           </div>
-          <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
-            ✦ AI Tools
-          </button>
+          <div>
+            {active.type === "group" && active.id && (
+              <button 
+                onClick={() => {
+                  const groupId = active.id.split('_')[1];
+                  setSelectedGroupForMembers(groupId);
+                  setShowAddMember(true);
+                  fetchGroupMembers(groupId);
+                }}
+                style={{ 
+                  background: "#161B22", 
+                  color: "#E8A838", 
+                  border: "1px solid #E8A838", 
+                  borderRadius: 8, 
+                  padding: "8px 12px", 
+                  cursor: "pointer",
+                  marginRight: "8px"
+                }}
+              >
+                👥 Add Member
+              </button>
+            )}
+            <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+              ✦ AI Tools
+            </button>
+          </div>
         </div>
 
         <div style={{ 
