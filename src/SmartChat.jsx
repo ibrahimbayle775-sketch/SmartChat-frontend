@@ -282,93 +282,79 @@ function ChatApp({ user, onLogout }) {
   const [input, setInput] = useState("");
   const [showAI, setShowAI] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [sideTab, setSideTab] = useState("dm");
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupDesc, setNewGroupDesc] = useState("");
+  const [creatingGroup, setCreatingGroup] = useState(false);
   const bottomRef = useRef();
   const pollingRef = useRef(null);
   const fileInputRef = useRef(null);
   const imageInputRef = useRef(null);
 
-  // Groups Data
-  const GROUPS = [
-    { 
-      id: "g1", 
-      name: "CS301 – Data Structures", 
-      avatar: "DS", 
-      color: "#60A5FA", 
-      members: ["u1", "u2", "u3"],
-      description: "Class discussions and homework help"
-    },
-    { 
-      id: "g2", 
-      name: "Study Group Alpha", 
-      avatar: "SG", 
-      color: "#FBBF24", 
-      members: ["u2", "u3", "u4"],
-      description: "Weekly study sessions"
-    },
-    { 
-      id: "g3", 
-      name: "Thesis Review Panel", 
-      avatar: "TR", 
-      color: "#F472B6", 
-      members: ["u1", "u3", "u5"],
-      description: "Thesis feedback and reviews"
-    },
-    { 
-      id: "g4", 
-      name: "Computer Science Club", 
-      avatar: "CS", 
-      color: "#34D399", 
-      members: ["u1", "u2", "u3", "u4", "u5"],
-      description: "Coding events and competitions"
+  // Fetch all users
+  useEffect(() => {
+    console.log("🔍 Fetching users...");
+    const token = localStorage.getItem('token');
+    if (!token) return;
+    
+    apiCall('/api/users')
+      .then(async res => {
+        const data = await res.json();
+        if (res.ok && data.users) {
+          console.log("✅ Found users:", data.users);
+          setAllUsers(data.users);
+        }
+      })
+      .catch(err => console.error("Fetch error:", err));
+  }, []);
+
+  // Fetch groups
+  const fetchGroups = async () => {
+    try {
+      const res = await apiCall('/api/groups');
+      const data = await res.json();
+      if (data.groups) {
+        setGroups(data.groups);
+      }
+    } catch (err) {
+      console.error("Error fetching groups:", err);
     }
-  ];
-
-  // Contacts Data
-  const CONTACTS = [
-    { id: "u1", name: "Dr. Amara Osei", role: "lecturer", avatar: "AO", color: "#E8A838" },
-    { id: "u2", name: "Liam Mwangi", role: "student", avatar: "LM", color: "#4FC3B0" },
-    { id: "u3", name: "Priya Sharma", role: "student", avatar: "PS", color: "#A78BFA" },
-    { id: "u4", name: "Kofi Boateng", role: "student", avatar: "KB", color: "#F87171" },
-    { id: "u5", name: "Dr. Nadia Kirsten", role: "lecturer", avatar: "NK", color: "#34D399" },
-  ];
-
-  // Seed Messages
-  const SEED_MESSAGES = {
-    u2: [
-      { id: uid(), from: "u2", text: "Good morning Dr. Osei!", time: "09:12", type: "text" },
-      { id: uid(), from: "me", text: "Good morning Liam!", time: "09:15", type: "text" },
-    ],
-    u1: [
-      { id: uid(), from: "me", text: "Please review the lecture slides.", time: "08:00", type: "text" },
-      { id: uid(), from: "u1", text: "Will do, Professor!", time: "08:05", type: "text" },
-    ],
-    u3: [
-      { id: uid(), from: "u3", text: "Hi Dr. Osei, I have a question.", time: "10:00", type: "text" },
-      { id: uid(), from: "me", text: "Sure, what's your question?", time: "10:02", type: "text" },
-    ],
-    g1: [
-      { id: uid(), from: "u1", text: "Welcome to CS301! Please introduce yourselves.", time: "09:00", type: "text" },
-      { id: uid(), from: "u2", text: "Hi everyone! I'm Liam.", time: "09:05", type: "text" },
-      { id: uid(), from: "u3", text: "Hello! I'm Priya.", time: "09:06", type: "text" },
-      { id: uid(), from: "me", text: "Welcome all! Let's discuss the first assignment.", time: "09:10", type: "text" },
-    ],
-    g2: [
-      { id: uid(), from: "u2", text: "Anyone want to study together today?", time: "14:00", type: "text" },
-      { id: uid(), from: "u3", text: "I'm in! What time?", time: "14:05", type: "text" },
-      { id: uid(), from: "me", text: "I can join at 3 PM", time: "14:10", type: "text" },
-    ],
-    g3: [
-      { id: uid(), from: "u1", text: "Please submit your thesis outlines by Friday.", time: "11:00", type: "text" },
-      { id: uid(), from: "u3", text: "Will do! Should we include references?", time: "11:05", type: "text" },
-    ],
-    g4: [
-      { id: uid(), from: "u1", text: "Hackathon next month! Who's interested?", time: "16:00", type: "text" },
-      { id: uid(), from: "u2", text: "I'm in!", time: "16:05", type: "text" },
-      { id: uid(), from: "u3", text: "Me too!", time: "16:06", type: "text" },
-    ]
   };
 
-  const [sideTab, setSideTab] = useState("dm");
+  useEffect(() => {
+    if (user) {
+      fetchGroups();
+    }
+  }, [user]);
+
+  // Create group
+  const createGroup = async () => {
+    if (!newGroupName.trim()) return;
+    setCreatingGroup(true);
+    try {
+      const res = await apiCall('/api/groups', {
+        method: 'POST',
+        body: JSON.stringify({
+          name: newGroupName,
+          description: newGroupDesc
+        })
+      });
+      const data = await res.json();
+      if (data.group) {
+        setGroups([...groups, data.group]);
+        setShowCreateGroup(false);
+        setNewGroupName("");
+        setNewGroupDesc("");
+      }
+    } catch (err) {
+      console.error("Error creating group:", err);
+      alert("Failed to create group");
+    } finally {
+      setCreatingGroup(false);
+    }
+  };
 
   // File upload handlers
   const handleFileUpload = (e) => {
@@ -415,25 +401,10 @@ function ChatApp({ user, onLogout }) {
     e.target.value = "";
   };
 
-  // Fetch all users
-  useEffect(() => {
-    console.log("🔍 Fetching users...");
-    const token = localStorage.getItem('token');
-    if (!token) return;
-    
-    apiCall('/api/users')
-      .then(async res => {
-        const data = await res.json();
-        if (res.ok && data.users) {
-          setAllUsers(data.users);
-        }
-      })
-      .catch(err => console.error("Fetch error:", err));
-  }, []);
-
   // Load messages function
   const loadMessages = async (otherUserId) => {
     if (!otherUserId || !user) return;
+    console.log("🔍 Loading messages with user:", otherUserId);
 
     try {
       const res = await apiCall(`/api/load-messages/${otherUserId}`);
@@ -443,13 +414,14 @@ function ChatApp({ user, onLogout }) {
       
       const formatted = data.messages.map(msg => ({
         id: msg.id,
-        from: msg.sender === user.id.toString() ? "me" : otherUserId,
+        from: msg.sender === user.id.toString() ? "me" : msg.sender,
         text: msg.text,
         time: msg.timestamp || now(),
         type: "text"
       })).sort((a, b) => a.id - b.id);
       
       setMessages(prev => ({ ...prev, [otherUserId]: formatted }));
+      console.log(`✅ Loaded ${formatted.length} messages for user ${otherUserId}`);
       
     } catch (err) {
       console.error("Error loading messages:", err);
@@ -490,7 +462,7 @@ function ChatApp({ user, onLogout }) {
 
   // Send message function
   const send = async (text) => {
-    if ((!text.trim() && !active.id) || active.type !== "dm") return;
+    if (!text.trim() || !active.id) return;
 
     const msg = {
       id: uid(),
@@ -507,15 +479,35 @@ function ChatApp({ user, onLogout }) {
     setInput("");
 
     try {
-      await apiCall('/api/save-message', {
-        method: 'POST',
-        body: JSON.stringify({
-          sender: user.id.toString(),
-          receiver: active.id.toString(),
-          text: text.trim()
-        })
-      });
-      await loadMessages(active.id);
+      if (active.type === "dm") {
+        await apiCall('/api/save-message', {
+          method: 'POST',
+          body: JSON.stringify({
+            sender: user.id.toString(),
+            receiver: active.id.toString(),
+            text: text.trim()
+          })
+        });
+        await loadMessages(active.id);
+      } else if (active.type === "group") {
+        const groupId = active.id.split('_')[1];
+        await apiCall(`/api/groups/${groupId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ text: text.trim() })
+        });
+        const res = await apiCall(`/api/groups/${groupId}/messages`);
+        const data = await res.json();
+        if (data.messages) {
+          const formatted = data.messages.map(msg => ({
+            id: msg.id,
+            from: msg.sender === user.id.toString() ? "me" : msg.sender,
+            text: msg.text,
+            time: msg.timestamp,
+            type: "text"
+          }));
+          setMessages(prev => ({ ...prev, [active.id]: formatted }));
+        }
+      }
     } catch (err) {
       console.error("Error saving message:", err);
       setMessages(prev => ({
@@ -535,9 +527,11 @@ function ChatApp({ user, onLogout }) {
 
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeContact = active.type === "dm" 
-    ? CONTACTS.find(c => c.id === active.id) 
-    : GROUPS.find(g => g.id === active.id);
-  const activeName = activeContact?.name || "Select a chat";
+    ? allUsers.find(u => u.id.toString() === active.id) 
+    : active.type === "group" 
+      ? groups.find(g => `group_${g.id}` === active.id)
+      : null;
+  const activeName = activeContact?.username || activeContact?.name || active.name || "Select a chat";
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
@@ -572,73 +566,125 @@ function ChatApp({ user, onLogout }) {
         </div>
         
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {sideTab === "dm" && CONTACTS.map(c => {
-            const isActive = active.id === c.id && active.type === "dm";
-            const hasMessages = messages[c.id] && messages[c.id].length > 0;
-            const lastMsg = hasMessages ? messages[c.id][messages[c.id].length - 1] : null;
-            
-            return (
-              <div 
-                key={c.id} 
-                onClick={() => {
-                  setActive({ id: c.id, type: "dm", name: c.name });
-                  if (!messages[c.id]) {
-                    setMessages(prev => ({ ...prev, [c.id]: [] }));
-                  }
-                }}
-                style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 12, 
-                  padding: "12px 16px", 
-                  background: isActive ? "#1E293B" : "transparent", 
-                  cursor: "pointer",
-                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
-                }}>
-                <Avatar label={c.avatar} color={c.color} size={40} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{c.name}</div>
-                  <div style={{ fontSize: 11, color: "#64748B" }}>
-                    {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : "Click to chat"}
-                  </div>
-                </div>
+          {sideTab === "dm" && (
+            <>
+              <div style={{ padding: "10px 16px", borderBottom: "1px solid #1E293B", marginBottom: "8px" }}>
+                <div style={{ fontSize: "12px", color: "#64748B" }}>ALL REGISTERED USERS</div>
+                <div style={{ fontSize: "10px", color: "#475569" }}>Click any user to start chatting</div>
               </div>
-            );
-          })}
+              
+              {allUsers.filter(u => u.username !== user.username).map(otherUser => {
+                const isActive = active.id === otherUser.id.toString() && active.type === "dm";
+                const hasMessages = messages[otherUser.id.toString()] && messages[otherUser.id.toString()].length > 0;
+                const lastMsg = hasMessages 
+                  ? messages[otherUser.id.toString()][messages[otherUser.id.toString()].length - 1] 
+                  : null;
+                
+                return (
+                  <div 
+                    key={otherUser.id} 
+                    onClick={() => {
+                      console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
+                      setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
+                      if (!messages[otherUser.id.toString()]) {
+                        setMessages(prev => ({ ...prev, [otherUser.id.toString()]: [] }));
+                      }
+                    }}
+                    style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 12, 
+                      padding: "12px 16px", 
+                      background: isActive ? "#1E293B" : "transparent", 
+                      cursor: "pointer",
+                      borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
+                    }}>
+                    <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{otherUser.username}</div>
+                      <div style={{ fontSize: 11, color: "#64748B" }}>
+                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : "Click to start chatting"}
+                      </div>
+                    </div>
+                    {!hasMessages && (
+                      <span style={{ fontSize: 10, background: "#E8A838", color: "#0F172A", padding: "2px 6px", borderRadius: 10 }}>new</span>
+                    )}
+                  </div>
+                );
+              })}
+              
+              {allUsers.filter(u => u.username !== user.username).length === 0 && (
+                <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
+                  No other users yet. Share this app with friends to start chatting!
+                </div>
+              )}
+            </>
+          )}
           
-          {sideTab === "groups" && GROUPS.map(g => {
-            const isActive = active.id === g.id && active.type === "group";
-            const hasMessages = messages[g.id] && messages[g.id].length > 0;
-            const lastMsg = hasMessages ? messages[g.id][messages[g.id].length - 1] : null;
-            
-            return (
-              <div 
-                key={g.id} 
-                onClick={() => {
-                  setActive({ id: g.id, type: "group", name: g.name });
-                  if (!messages[g.id]) {
-                    setMessages(prev => ({ ...prev, [g.id]: SEED_MESSAGES[g.id] || [] }));
-                  }
-                }}
-                style={{ 
-                  display: "flex", 
-                  alignItems: "center", 
-                  gap: 12, 
-                  padding: "12px 16px", 
-                  background: isActive ? "#1E293B" : "transparent", 
-                  cursor: "pointer",
-                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
-                }}>
-                <Avatar label={g.avatar} color={g.color} size={40} />
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div>
-                  <div style={{ fontSize: 11, color: "#64748B" }}>
-                    {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : `${g.members.length} members`}
-                  </div>
-                </div>
+          {sideTab === "groups" && (
+            <>
+              <div style={{ padding: "10px 16px" }}>
+                <button
+                  onClick={() => setShowCreateGroup(true)}
+                  style={{
+                    width: "100%",
+                    padding: "10px",
+                    background: "#E8A838",
+                    border: "none",
+                    borderRadius: "8px",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "8px"
+                  }}
+                >
+                  ➕ Create New Group
+                </button>
               </div>
-            );
-          })}
+              
+              {groups.map(g => {
+                const isActive = active.id === `group_${g.id}` && active.type === "group";
+                const hasMessages = messages[`group_${g.id}`] && messages[`group_${g.id}`].length > 0;
+                const lastMsg = hasMessages ? messages[`group_${g.id}`][messages[`group_${g.id}`].length - 1] : null;
+                
+                return (
+                  <div 
+                    key={g.id} 
+                    onClick={() => {
+                      setActive({ id: `group_${g.id}`, type: "group", name: g.name });
+                      if (!messages[`group_${g.id}`]) {
+                        setMessages(prev => ({ ...prev, [`group_${g.id}`]: [] }));
+                      }
+                    }}
+                    style={{ 
+                      display: "flex", 
+                      alignItems: "center", 
+                      gap: 12, 
+                      padding: "12px 16px", 
+                      background: isActive ? "#1E293B" : "transparent", 
+                      cursor: "pointer",
+                      borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
+                    }}>
+                    <Avatar label={g.name.substring(0,2).toUpperCase()} color="#60A5FA" size={40} />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div>
+                      <div style={{ fontSize: 11, color: "#64748B" }}>
+                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : "Click to chat"}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              
+              {groups.length === 0 && (
+                <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
+                  No groups yet. Create one to start group chats!
+                </div>
+              )}
+            </>
+          )}
         </div>
         
         <button 
@@ -647,6 +693,78 @@ function ChatApp({ user, onLogout }) {
           Logout
         </button>
       </aside>
+
+      {/* Create Group Modal */}
+      {showCreateGroup && (
+        <div style={{
+          position: "fixed",
+          top: "50%",
+          left: "50%",
+          transform: "translate(-50%, -50%)",
+          background: "#0D1117",
+          border: "1px solid #1E293B",
+          borderRadius: "12px",
+          padding: "24px",
+          width: "320px",
+          zIndex: 2000,
+          boxShadow: "0 4px 20px rgba(0,0,0,0.5)"
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
+            <h3 style={{ color: "#E8A838", margin: 0 }}>Create New Group</h3>
+            <button onClick={() => setShowCreateGroup(false)} style={{ background: "none", border: "none", color: "#fff", fontSize: "20px", cursor: "pointer" }}>✕</button>
+          </div>
+          
+          <input
+            type="text"
+            placeholder="Group Name"
+            value={newGroupName}
+            onChange={e => setNewGroupName(e.target.value)}
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "12px",
+              background: "#161B22",
+              border: "1px solid #2D3748",
+              borderRadius: "8px",
+              color: "#E2E8F0"
+            }}
+          />
+          
+          <textarea
+            placeholder="Description (optional)"
+            value={newGroupDesc}
+            onChange={e => setNewGroupDesc(e.target.value)}
+            rows="3"
+            style={{
+              width: "100%",
+              padding: "10px",
+              marginBottom: "16px",
+              background: "#161B22",
+              border: "1px solid #2D3748",
+              borderRadius: "8px",
+              color: "#E2E8F0",
+              resize: "none"
+            }}
+          />
+          
+          <button
+            onClick={createGroup}
+            disabled={creatingGroup || !newGroupName.trim()}
+            style={{
+              width: "100%",
+              padding: "10px",
+              background: "#E8A838",
+              border: "none",
+              borderRadius: "8px",
+              cursor: "pointer",
+              fontWeight: "bold",
+              opacity: (creatingGroup || !newGroupName.trim()) ? 0.5 : 1
+            }}
+          >
+            {creatingGroup ? "Creating..." : "Create Group"}
+          </button>
+        </div>
+      )}
 
       {/* Main Chat Area */}
       <main style={{ 
@@ -669,7 +787,7 @@ function ChatApp({ user, onLogout }) {
           <div>
             <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
             {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>
-              {active.type === "group" ? `${activeContact?.members?.length} members` : "Online"}
+              {active.type === "group" ? "Group Chat" : "Online"}
             </p>}
           </div>
           <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
@@ -688,7 +806,7 @@ function ChatApp({ user, onLogout }) {
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
-              <p>Click a user from Direct or Groups to start chatting.</p>
+              <p>Click a user from Direct or create a group to start chatting.</p>
             </div>
           ) : activeMessages.length === 0 ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
@@ -698,13 +816,23 @@ function ChatApp({ user, onLogout }) {
             activeMessages.map(msg => {
               let contact;
               if (active.type === "dm") {
-                contact = msg.from === "me" 
-                  ? { name: "You", avatar: "ME", color: "#E8A838" }
-                  : CONTACTS.find(c => c.id === msg.from) || { name: activeName, avatar: activeName.substring(0,2).toUpperCase(), color: "#888" };
+                if (msg.from === "me") {
+                  contact = { name: "You", avatar: "ME", color: "#E8A838" };
+                } else {
+                  const otherUser = allUsers.find(u => u.id.toString() === msg.from);
+                  contact = otherUser 
+                    ? { name: otherUser.username, avatar: otherUser.username.substring(0,2).toUpperCase(), color: "#E8A838" }
+                    : { name: msg.from, avatar: msg.from.substring(0,2).toUpperCase(), color: "#888" };
+                }
               } else {
-                contact = msg.from === "me" 
-                  ? { name: "You", avatar: "ME", color: "#E8A838" }
-                  : CONTACTS.find(c => c.id === msg.from) || { name: msg.from, avatar: msg.from.substring(0,2).toUpperCase(), color: "#888" };
+                if (msg.from === "me") {
+                  contact = { name: "You", avatar: "ME", color: "#E8A838" };
+                } else {
+                  const userFromMsg = allUsers.find(u => u.id.toString() === msg.from);
+                  contact = userFromMsg 
+                    ? { name: userFromMsg.username, avatar: userFromMsg.username.substring(0,2).toUpperCase(), color: "#888" }
+                    : { name: msg.from, avatar: msg.from.substring(0,2).toUpperCase(), color: "#888" };
+                }
               }
               const isMine = msg.from === "me";
               return <Bubble key={msg.id} msg={msg} contact={contact} isMine={isMine} />;
