@@ -5,6 +5,7 @@ import { useState, useRef, useEffect } from "react";
 const uid = () => Math.random().toString(36).slice(2, 10);
 const now = () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
+// API call function with token
 async function apiCall(endpoint, options = {}) {
   const headers = {
     'Content-Type': 'application/json',
@@ -14,6 +15,9 @@ async function apiCall(endpoint, options = {}) {
   const token = localStorage.getItem('token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+    console.log("✅ Adding token to request:", endpoint);
+  } else {
+    console.log("❌ No token found for:", endpoint);
   }
   
   const response = await fetch(`https://smartchat-backend-4kan.onrender.com${endpoint}`, {
@@ -34,6 +38,7 @@ async function callClaude(systemPrompt, userContent, maxTokens = 512) {
     if (data.content) return data.content;
     return "Sorry, couldn't get a response.";
   } catch (error) {
+    console.error("Claude error:", error);
     return "Oops! Can't connect to backend.";
   }
 }
@@ -59,13 +64,24 @@ function Bubble({ msg, contact, isMine }) {
   const [showActions, setShowActions] = useState(false);
 
   const detectTone = async () => {
-    if (tone) return;
+    console.log("🎯 Tone button clicked for:", msg.text);
+    if (tone) {
+      console.log("Tone already exists:", tone);
+      return;
+    }
     setDetecting(true);
-    const result = await callClaude(
-      "Describe the emotional tone in ONE word: Formal, Friendly, Urgent, Confused, Neutral, Anxious, or Appreciative.",
-      msg.text, 30
-    );
-    setTone(result.trim());
+    console.log("Calling Claude API for tone analysis...");
+    try {
+      const result = await callClaude(
+        "Describe the emotional tone in ONE word: Formal, Friendly, Urgent, Confused, Neutral, Anxious, or Appreciative.",
+        msg.text, 30
+      );
+      console.log("Claude response:", result);
+      setTone(result.trim());
+    } catch (error) {
+      console.error("Error detecting tone:", error);
+      setTone("Error");
+    }
     setDetecting(false);
   };
 
@@ -123,9 +139,16 @@ function AIPanel({ messages, onClose }) {
   const transcript = messages.map(m => m.text).join("\n");
 
   const runSummary = async () => {
+    console.log("📋 Summary requested for transcript length:", transcript.length);
     setLoading(true);
-    const r = await callClaude("Summarize this conversation in 2-3 bullet points.", transcript, 300);
-    setResult(r);
+    try {
+      const r = await callClaude("Summarize this conversation in 2-3 bullet points.", transcript, 300);
+      console.log("Summary response:", r);
+      setResult(r);
+    } catch (error) {
+      console.error("Error getting summary:", error);
+      setResult("Error getting summary");
+    }
     setLoading(false);
   };
 
@@ -173,11 +196,13 @@ function AuthPage({ onLogin }) {
         setError(result.error || "Something went wrong");
       } else {
         if (result.token) {
+          console.log("💾 Saving NEW token to localStorage");
           localStorage.setItem('token', result.token);
         }
         onLogin(result.user);
       }
     } catch (err) {
+      console.error("Fetch error:", err);
       setError("Cannot connect to server. Please try again.");
     } finally {
       setLoading(false);
@@ -248,50 +273,62 @@ function ChatApp({ user, onLogout }) {
 
   // Fetch all users
   useEffect(() => {
+    console.log("🔍 Fetching users...");
     const token = localStorage.getItem('token');
-    if (!token) return;
+    if (!token) {
+      console.log("❌ No token, skipping users fetch");
+      return;
+    }
     
     apiCall('/api/users')
       .then(async res => {
         const data = await res.json();
+        console.log("📡 Users API response status:", res.status);
         if (res.ok && data.users) {
+          console.log("✅ Found users:", data.users);
           setAllUsers(data.users);
+        } else if (res.status === 401) {
+          console.log("⚠️ Users API returned 401 - token may be invalid");
+          setAllUsers([]);
+        } else if (data.error) {
+          console.log("❌ Error from server:", data.error);
         }
       })
-      .catch(err => console.error("Fetch error:", err));
+      .catch(err => console.error("❌ Fetch error:", err));
   }, []);
 
-  // Load messages function with sender/receiver filtering
+  // Load messages function
   const loadMessages = async (otherUserId) => {
-    if (!otherUserId || !user) return;
+    console.log("🔍 loadMessages called for:", otherUserId);
+    console.log("🔑 Current token:", localStorage.getItem('token') ? "Exists" : "Missing");
+    
+    if (!otherUserId || !user) {
+      console.log("❌ Missing otherUserId or user");
+      return;
+    }
 
     try {
       const res = await apiCall(`/api/load-messages/${otherUserId}`);
       const data = await res.json();
-
-      if (!data.messages) return;
-
-      const formatted = data.messages
-        .filter(msg =>
-          (msg.sender.toString() === user.id.toString() &&
-           msg.receiver.toString() === otherUserId.toString()) ||
-          (msg.sender.toString() === otherUserId.toString() &&
-           msg.receiver.toString() === user.id.toString())
-        )
-        .map(msg => ({
-          id: msg.id,
-          from: msg.sender.toString() === user.id.toString() ? "me" : "them",
-          text: msg.text,
-          time: msg.timestamp || now(),
-          type: "text"
-        }))
-        .sort((a, b) => a.id - b.id);
-
-      setMessages(prev => ({
-        ...prev,
-        [otherUserId]: formatted
-      }));
-
+      
+      if (!data.messages) {
+        console.log("No messages returned");
+        return;
+      }
+      
+      console.log(`📩 Received ${data.messages.length} messages for conversation with ${otherUserId}`);
+      
+      const formatted = data.messages.map(msg => ({
+        id: msg.id,
+        from: msg.sender === user.id.toString() ? "me" : otherUserId,
+        text: msg.text,
+        time: msg.timestamp || now(),
+        type: "text"
+      })).sort((a, b) => a.id - b.id);
+      
+      setMessages(prev => ({ ...prev, [otherUserId]: formatted }));
+      console.log(`📝 Stored ${formatted.length} messages for key ${otherUserId}`);
+      
     } catch (err) {
       console.error("Error loading messages:", err);
     }
@@ -300,6 +337,7 @@ function ChatApp({ user, onLogout }) {
   // Load messages when selected user changes
   useEffect(() => {
     if (active.id && user) {
+      console.log("🔄 Active user changed, loading messages for:", active.id);
       loadMessages(active.id);
     }
   }, [active.id, user]);
@@ -312,12 +350,15 @@ function ChatApp({ user, onLogout }) {
       clearInterval(pollingRef.current);
     }
     
+    console.log("⏰ Starting polling for messages every 2 seconds");
     pollingRef.current = setInterval(() => {
+      console.log("🔄 Polling for new messages...");
       loadMessages(active.id);
     }, 2000);
     
     return () => {
       if (pollingRef.current) {
+        console.log("⏹️ Stopping polling");
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
@@ -346,10 +387,10 @@ function ChatApp({ user, onLogout }) {
       ...prev,
       [active.id]: [...(prev[active.id] ?? []), msg]
     }));
-
     setInput("");
 
     try {
+      console.log("📤 Sending message to:", active.id);
       await apiCall('/api/save-message', {
         method: 'POST',
         body: JSON.stringify({
@@ -358,12 +399,11 @@ function ChatApp({ user, onLogout }) {
           text: text.trim()
         })
       });
-
+      console.log("✅ Message saved, reloading messages...");
       await loadMessages(active.id);
 
     } catch (err) {
       console.error("Error saving message:", err);
-
       // rollback if failed
       setMessages(prev => ({
         ...prev,
@@ -373,6 +413,7 @@ function ChatApp({ user, onLogout }) {
   };
 
   const handleLogout = () => {
+    console.log("🚪 Logging out...");
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
     }
@@ -382,6 +423,10 @@ function ChatApp({ user, onLogout }) {
 
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
   const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
+
+  console.log(`🖥️ Rendering chat for ${activeName}, messages count: ${activeMessages.length}`);
+  console.log("👥 Current allUsers:", allUsers);
+  console.log("👤 Current user:", user);
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
@@ -399,9 +444,7 @@ function ChatApp({ user, onLogout }) {
         <div style={{ flex: 1, overflowY: "auto" }}>
           {allUsers.filter(u => u.username !== user.username).map(otherUser => {
             const isActive = active.id === otherUser.id.toString();
-            // FIXED: Use toString() for consistent key lookup
             const hasMessages = messages[otherUser.id.toString()] && messages[otherUser.id.toString()].length > 0;
-            // FIXED: Use toString() for consistent key lookup in lastMsg
             const lastMsg = hasMessages 
               ? messages[otherUser.id.toString()][messages[otherUser.id.toString()].length - 1] 
               : null;
@@ -410,6 +453,7 @@ function ChatApp({ user, onLogout }) {
               <div 
                 key={otherUser.id} 
                 onClick={() => {
+                  console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
                   setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
                   if (!messages[otherUser.id.toString()]) {
                     setMessages(prev => ({ ...prev, [otherUser.id.toString()]: [] }));
@@ -550,18 +594,24 @@ export default function SmartChat() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
+    console.log("🔑 Token from localStorage:", token ? `Found (${token.substring(0, 20)}...)` : "Not found");
     
     if (!token) {
       setLoading(false);
       return;
     }
     
+    console.log("🔍 Checking session...");
     apiCall('/api/me')
       .then(async res => {
         const data = await res.json();
+        console.log("📡 Session response status:", res.status);
+        console.log("📡 Session data:", data);
         if (res.ok && data.user) {
+          console.log("✅ Session valid for user:", data.user.username);
           setUser(data.user);
         } else {
+          console.log("❌ Session invalid, clearing token");
           localStorage.removeItem('token');
         }
       })
