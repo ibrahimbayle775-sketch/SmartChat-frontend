@@ -288,7 +288,6 @@ function ChatApp({ user, onLogout }) {
   const [showAddMember, setShowAddMember] = useState(false);
   const [selectedGroupForMembers, setSelectedGroupForMembers] = useState(null);
   const [groupMembers, setGroupMembers] = useState([]);
-  const [availableUsers, setAvailableUsers] = useState([]);
   const [addingMember, setAddingMember] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
   const [newGroupDesc, setNewGroupDesc] = useState("");
@@ -387,7 +386,6 @@ function ChatApp({ user, onLogout }) {
       if (data.message) {
         alert(`✅ ${username} added to group!`);
         fetchGroupMembers(groupId);
-        // Refresh groups list for the added member
         fetchGroups();
         setShowAddMember(false);
       } else if (data.error) {
@@ -505,7 +503,7 @@ function ChatApp({ user, onLogout }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
 
-  // Send message function
+  // Send message function - FIXED for groups
   const send = async (text) => {
     if (!text.trim() || !active.id) return;
 
@@ -517,6 +515,7 @@ function ChatApp({ user, onLogout }) {
       type: "text"
     };
 
+    // Optimistically add to UI
     setMessages(prev => ({
       ...prev,
       [active.id]: [...(prev[active.id] ?? []), msg]
@@ -525,6 +524,7 @@ function ChatApp({ user, onLogout }) {
 
     try {
       if (active.type === "dm") {
+        // Direct message
         await apiCall('/api/save-message', {
           method: 'POST',
           body: JSON.stringify({
@@ -535,15 +535,24 @@ function ChatApp({ user, onLogout }) {
         });
         await loadMessages(active.id);
       } else if (active.type === "group") {
+        // Group message - extract group ID from active.id (format: "group_123")
         const groupId = active.id.split('_')[1];
-        await apiCall(`/api/groups/${groupId}/messages`, {
+        console.log(`📤 Sending group message to group ${groupId}: ${text}`);
+        
+        const response = await apiCall(`/api/groups/${groupId}/messages`, {
           method: 'POST',
           body: JSON.stringify({ text: text.trim() })
         });
-        const res = await apiCall(`/api/groups/${groupId}/messages`);
-        const data = await res.json();
-        if (data.messages) {
-          const formatted = data.messages.map(msg => ({
+        
+        const data = await response.json();
+        console.log("Group message response:", data);
+        
+        // Reload group messages
+        const messagesRes = await apiCall(`/api/groups/${groupId}/messages`);
+        const messagesData = await messagesRes.json();
+        
+        if (messagesData.messages) {
+          const formatted = messagesData.messages.map(msg => ({
             id: msg.id,
             from: msg.sender === user.id.toString() ? "me" : msg.sender,
             text: msg.text,
@@ -555,10 +564,12 @@ function ChatApp({ user, onLogout }) {
       }
     } catch (err) {
       console.error("Error saving message:", err);
+      // Rollback if failed
       setMessages(prev => ({
         ...prev,
         [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
       }));
+      alert("Failed to send message. Please try again.");
     }
   };
 
@@ -717,7 +728,7 @@ function ChatApp({ user, onLogout }) {
                     <div style={{ flex: 1 }}>
                       <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div>
                       <div style={{ fontSize: 11, color: "#64748B" }}>
-                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : `${g.members?.length || 0} members`}
+                        {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : `${groupMembers.length} members`}
                       </div>
                     </div>
                   </div>
@@ -1029,6 +1040,7 @@ function ChatApp({ user, onLogout }) {
               justifyContent: "center"
             }}
             title="Upload file"
+            disabled={!active.id}
           >
             📎
           </button>
@@ -1048,6 +1060,7 @@ function ChatApp({ user, onLogout }) {
               justifyContent: "center"
             }}
             title="Upload image"
+            disabled={!active.id}
           >
             🖼️
           </button>
@@ -1055,13 +1068,18 @@ function ChatApp({ user, onLogout }) {
           <textarea 
             value={input} 
             onChange={e => setInput(e.target.value)} 
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && active.id && active.type === "dm") { e.preventDefault(); send(input); } }} 
-            placeholder={active.id && active.type === "dm" ? "Type a message..." : "Select a direct chat to message"}
-            disabled={!active.id || active.type !== "dm"}
+            onKeyDown={e => { 
+              if (e.key === "Enter" && !e.shiftKey && active.id) { 
+                e.preventDefault(); 
+                send(input); 
+              } 
+            }} 
+            placeholder={active.id ? "Type a message..." : "Select a chat to start messaging"}
+            disabled={!active.id}
             rows={1} 
-            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: (active.id && active.type === "dm") ? 1 : 0.5 }} 
+            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
           />
-          <button onClick={() => send(input)} disabled={!input.trim() || !active.id || active.type !== "dm"} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id || active.type !== "dm") ? 0.5 : 1 }}>
+          <button onClick={() => send(input)} disabled={!input.trim() || !active.id} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id) ? 0.5 : 1 }}>
             ➤
           </button>
         </div>
