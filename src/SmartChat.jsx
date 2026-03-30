@@ -340,6 +340,29 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
+  // Load group messages
+  const loadGroupMessages = async (groupId) => {
+    try {
+      console.log(`📩 Loading messages for group ${groupId}`);
+      const res = await apiCall(`/api/groups/${groupId}/messages`);
+      const data = await res.json();
+      
+      if (data.messages) {
+        const formatted = data.messages.map(msg => ({
+          id: msg.id,
+          from: msg.sender === user.id.toString() ? "me" : msg.sender,
+          text: msg.text,
+          time: msg.timestamp,
+          type: "text"
+        }));
+        setMessages(prev => ({ ...prev, [`group_${groupId}`]: formatted }));
+        console.log(`✅ Loaded ${formatted.length} messages for group ${groupId}`);
+      }
+    } catch (err) {
+      console.error("Error loading group messages:", err);
+    }
+  };
+
   useEffect(() => {
     if (user) {
       fetchGroups();
@@ -399,76 +422,6 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
-  // Send message function with multimedia support
-  const send = async (text, msgType = "text", fileData = null) => {
-    if (active.type !== "dm") return;
-    if (msgType === "text" && (!text.trim())) return;
-    if (!active.id) return;
-
-    const msg = {
-      id: uid(),
-      from: "me",
-      time: now(),
-      type: msgType
-    };
-
-    if (msgType === "text") {
-      msg.text = text.trim();
-    } else if (msgType === "image") {
-      msg.src = fileData;
-      msg.text = "";
-    } else if (msgType === "file") {
-      msg.url = fileData.url;
-      msg.filename = fileData.name;
-      msg.text = "";
-    }
-
-    // Optimistically add to UI
-    setMessages(prev => ({
-      ...prev,
-      [active.id]: [...(prev[active.id] ?? []), msg]
-    }));
-    
-    if (msgType === "text") {
-      setInput("");
-    }
-
-    try {
-      const payload = {
-        sender: user.id.toString(),
-        receiver: active.id.toString(),
-        type: msgType
-      };
-      
-      if (msgType === "text") {
-        payload.text = text.trim();
-      } else if (msgType === "image") {
-        payload.file_url = fileData;
-        payload.text = "";
-      } else if (msgType === "file") {
-        payload.file_url = fileData.url;
-        payload.filename = fileData.name;
-        payload.text = "";
-      }
-      
-      await apiCall('/api/save-message', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
-      
-      await loadMessages(active.id);
-      
-    } catch (err) {
-      console.error("Error saving message:", err);
-      // Rollback if failed
-      setMessages(prev => ({
-        ...prev,
-        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
-      }));
-      alert("Failed to send message. Please try again.");
-    }
-  };
-
   // File upload handlers
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
@@ -491,7 +444,7 @@ function ChatApp({ user, onLogout }) {
     e.target.value = "";
   };
 
-  // Load messages function with multimedia parsing
+  // Load direct messages function
   const loadMessages = async (otherUserId) => {
     if (!otherUserId || !user) return;
     console.log("🔍 Loading messages with user:", otherUserId);
@@ -537,7 +490,7 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
-  // Load messages when selected user changes
+  // Load direct messages when selected user changes
   useEffect(() => {
     if (active.id && user && active.type === "dm") {
       loadMessages(active.id);
@@ -568,6 +521,91 @@ function ChatApp({ user, onLogout }) {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
+
+  // Send message function - works for both direct and group messages
+  const send = async (text, msgType = "text", fileData = null) => {
+    if (!text.trim() && msgType === "text") return;
+    if (!active.id) return;
+
+    const msg = {
+      id: uid(),
+      from: "me",
+      time: now(),
+      type: msgType
+    };
+
+    if (msgType === "text") {
+      msg.text = text.trim();
+    } else if (msgType === "image") {
+      msg.src = fileData;
+      msg.text = "";
+    } else if (msgType === "file") {
+      msg.url = fileData.url;
+      msg.filename = fileData.name;
+      msg.text = "";
+    }
+
+    // Optimistically add to UI
+    setMessages(prev => ({
+      ...prev,
+      [active.id]: [...(prev[active.id] ?? []), msg]
+    }));
+    
+    if (msgType === "text") {
+      setInput("");
+    }
+
+    try {
+      if (active.type === "dm") {
+        // Direct message
+        const payload = {
+          sender: user.id.toString(),
+          receiver: active.id.toString(),
+          type: msgType
+        };
+        
+        if (msgType === "text") {
+          payload.text = text.trim();
+        } else if (msgType === "image") {
+          payload.file_url = fileData;
+        } else if (msgType === "file") {
+          payload.file_url = fileData.url;
+          payload.filename = fileData.name;
+        }
+        
+        await apiCall('/api/save-message', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+        
+        await loadMessages(active.id);
+        
+      } else if (active.type === "group") {
+        // Group message
+        const groupId = active.id.split('_')[1];
+        console.log(`📤 Sending group message to group ${groupId}: ${text}`);
+        
+        const response = await apiCall(`/api/groups/${groupId}/messages`, {
+          method: 'POST',
+          body: JSON.stringify({ text: text.trim() })
+        });
+        
+        const data = await response.json();
+        console.log("Group message response:", data);
+        
+        // Reload group messages
+        await loadGroupMessages(groupId);
+      }
+    } catch (err) {
+      console.error("Error saving message:", err);
+      // Rollback if failed
+      setMessages(prev => ({
+        ...prev,
+        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
+      }));
+      alert("Failed to send message. Please try again.");
+    }
+  };
 
   const handleLogout = () => {
     if (pollingRef.current) {
@@ -710,6 +748,7 @@ function ChatApp({ user, onLogout }) {
                         setMessages(prev => ({ ...prev, [`group_${g.id}`]: [] }));
                       }
                       fetchGroupMembers(g.id);
+                      loadGroupMessages(g.id);
                     }}
                     style={{ 
                       display: "flex", 
@@ -1065,17 +1104,17 @@ function ChatApp({ user, onLogout }) {
             value={input} 
             onChange={e => setInput(e.target.value)} 
             onKeyDown={e => { 
-              if (e.key === "Enter" && !e.shiftKey && active.id && active.type === "dm") { 
+              if (e.key === "Enter" && !e.shiftKey && active.id) { 
                 e.preventDefault(); 
                 send(input, "text", null); 
               } 
             }} 
-            placeholder={active.id && active.type === "dm" ? "Type a message..." : "Select a direct chat to message"}
-            disabled={!active.id || active.type !== "dm"}
+            placeholder={active.id ? "Type a message..." : "Select a chat to start messaging"}
+            disabled={!active.id}
             rows={1} 
-            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: (active.id && active.type === "dm") ? 1 : 0.5 }} 
+            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
           />
-          <button onClick={() => send(input, "text", null)} disabled={!input.trim() || !active.id || active.type !== "dm"} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id || active.type !== "dm") ? 0.5 : 1 }}>
+          <button onClick={() => send(input, "text", null)} disabled={!input.trim() || !active.id} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id) ? 0.5 : 1 }}>
             ➤
           </button>
         </div>
