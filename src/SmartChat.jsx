@@ -57,26 +57,20 @@ function Avatar({ label, color, size = 38 }) {
   );
 }
 
-// Message Bubble Component
+// Message Bubble Component with multimedia support
 function Bubble({ msg, contact, isMine }) {
   const [tone, setTone] = useState(null);
   const [detecting, setDetecting] = useState(false);
   const [showActions, setShowActions] = useState(false);
 
   const detectTone = async () => {
-    console.log("🎯 Tone button clicked for:", msg.text);
-    if (tone) {
-      console.log("Tone already exists:", tone);
-      return;
-    }
+    if (tone || msg.type !== "text") return;
     setDetecting(true);
-    console.log("Calling Claude API for tone analysis...");
     try {
       const result = await callClaude(
         "Describe the emotional tone in ONE word: Formal, Friendly, Urgent, Confused, Neutral, Anxious, or Appreciative.",
         msg.text, 30
       );
-      console.log("Claude response:", result);
       setTone(result.trim());
     } catch (error) {
       console.error("Error detecting tone:", error);
@@ -103,11 +97,32 @@ function Bubble({ msg, contact, isMine }) {
           background: isMine ? "#E8A838" : "#1E293B",
           color: isMine ? "#0F172A" : "#E2E8F0",
           borderRadius: isMine ? "18px 18px 4px 18px" : "18px 18px 18px 4px",
-          padding: "10px 14px",
+          padding: msg.type === "image" ? "4px" : "10px 14px",
           fontSize: 14,
           wordWrap: "break-word"
         }}>
-          {msg.text}
+          {msg.type === "image" && (
+            <img 
+              src={msg.src} 
+              alt="shared" 
+              style={{ maxWidth: "200px", maxHeight: "200px", borderRadius: "8px", cursor: "pointer" }}
+              onClick={() => window.open(msg.src, "_blank")}
+            />
+          )}
+          {msg.type === "file" && (
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "24px" }}>📎</span>
+              <a 
+                href={msg.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                style={{ color: isMine ? "#0F172A" : "#60A5FA", textDecoration: "underline" }}
+              >
+                {msg.filename}
+              </a>
+            </div>
+          )}
+          {msg.type === "text" && msg.text}
         </div>
         <div style={{ 
           display: "flex", 
@@ -136,14 +151,13 @@ function AIPanel({ messages, onClose }) {
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const transcript = messages.map(m => m.text).join("\n");
+  const transcript = messages.filter(m => m.type === "text").map(m => m.text).join("\n");
 
   const runSummary = async () => {
-    console.log("📋 Summary requested for transcript length:", transcript.length);
+    if (!transcript.trim()) return;
     setLoading(true);
     try {
       const r = await callClaude("Summarize this conversation in 2-3 bullet points.", transcript, 300);
-      console.log("Summary response:", r);
       setResult(r);
     } catch (error) {
       console.error("Error getting summary:", error);
@@ -270,53 +284,162 @@ function ChatApp({ user, onLogout }) {
   const [allUsers, setAllUsers] = useState([]);
   const bottomRef = useRef();
   const pollingRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const imageInputRef = useRef(null);
+
+  // Groups Data
+  const GROUPS = [
+    { 
+      id: "g1", 
+      name: "CS301 – Data Structures", 
+      avatar: "DS", 
+      color: "#60A5FA", 
+      members: ["u1", "u2", "u3"],
+      description: "Class discussions and homework help"
+    },
+    { 
+      id: "g2", 
+      name: "Study Group Alpha", 
+      avatar: "SG", 
+      color: "#FBBF24", 
+      members: ["u2", "u3", "u4"],
+      description: "Weekly study sessions"
+    },
+    { 
+      id: "g3", 
+      name: "Thesis Review Panel", 
+      avatar: "TR", 
+      color: "#F472B6", 
+      members: ["u1", "u3", "u5"],
+      description: "Thesis feedback and reviews"
+    },
+    { 
+      id: "g4", 
+      name: "Computer Science Club", 
+      avatar: "CS", 
+      color: "#34D399", 
+      members: ["u1", "u2", "u3", "u4", "u5"],
+      description: "Coding events and competitions"
+    }
+  ];
+
+  // Contacts Data
+  const CONTACTS = [
+    { id: "u1", name: "Dr. Amara Osei", role: "lecturer", avatar: "AO", color: "#E8A838" },
+    { id: "u2", name: "Liam Mwangi", role: "student", avatar: "LM", color: "#4FC3B0" },
+    { id: "u3", name: "Priya Sharma", role: "student", avatar: "PS", color: "#A78BFA" },
+    { id: "u4", name: "Kofi Boateng", role: "student", avatar: "KB", color: "#F87171" },
+    { id: "u5", name: "Dr. Nadia Kirsten", role: "lecturer", avatar: "NK", color: "#34D399" },
+  ];
+
+  // Seed Messages
+  const SEED_MESSAGES = {
+    u2: [
+      { id: uid(), from: "u2", text: "Good morning Dr. Osei!", time: "09:12", type: "text" },
+      { id: uid(), from: "me", text: "Good morning Liam!", time: "09:15", type: "text" },
+    ],
+    u1: [
+      { id: uid(), from: "me", text: "Please review the lecture slides.", time: "08:00", type: "text" },
+      { id: uid(), from: "u1", text: "Will do, Professor!", time: "08:05", type: "text" },
+    ],
+    u3: [
+      { id: uid(), from: "u3", text: "Hi Dr. Osei, I have a question.", time: "10:00", type: "text" },
+      { id: uid(), from: "me", text: "Sure, what's your question?", time: "10:02", type: "text" },
+    ],
+    g1: [
+      { id: uid(), from: "u1", text: "Welcome to CS301! Please introduce yourselves.", time: "09:00", type: "text" },
+      { id: uid(), from: "u2", text: "Hi everyone! I'm Liam.", time: "09:05", type: "text" },
+      { id: uid(), from: "u3", text: "Hello! I'm Priya.", time: "09:06", type: "text" },
+      { id: uid(), from: "me", text: "Welcome all! Let's discuss the first assignment.", time: "09:10", type: "text" },
+    ],
+    g2: [
+      { id: uid(), from: "u2", text: "Anyone want to study together today?", time: "14:00", type: "text" },
+      { id: uid(), from: "u3", text: "I'm in! What time?", time: "14:05", type: "text" },
+      { id: uid(), from: "me", text: "I can join at 3 PM", time: "14:10", type: "text" },
+    ],
+    g3: [
+      { id: uid(), from: "u1", text: "Please submit your thesis outlines by Friday.", time: "11:00", type: "text" },
+      { id: uid(), from: "u3", text: "Will do! Should we include references?", time: "11:05", type: "text" },
+    ],
+    g4: [
+      { id: uid(), from: "u1", text: "Hackathon next month! Who's interested?", time: "16:00", type: "text" },
+      { id: uid(), from: "u2", text: "I'm in!", time: "16:05", type: "text" },
+      { id: uid(), from: "u3", text: "Me too!", time: "16:06", type: "text" },
+    ]
+  };
+
+  const [sideTab, setSideTab] = useState("dm");
+
+  // File upload handlers
+  const handleFileUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const fileUrl = URL.createObjectURL(file);
+      const msg = {
+        id: uid(),
+        from: "me",
+        type: "file",
+        filename: file.name,
+        url: fileUrl,
+        size: file.size,
+        time: now()
+      };
+      setMessages(prev => ({ 
+        ...prev, 
+        [active.id]: [...(prev[active.id] ?? []), msg] 
+      }));
+    });
+    e.target.value = "";
+  };
+
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files);
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const msg = {
+          id: uid(),
+          from: "me",
+          type: "image",
+          src: ev.target.result,
+          filename: file.name,
+          time: now()
+        };
+        setMessages(prev => ({ 
+          ...prev, 
+          [active.id]: [...(prev[active.id] ?? []), msg] 
+        }));
+      };
+      reader.readAsDataURL(file);
+    });
+    e.target.value = "";
+  };
 
   // Fetch all users
   useEffect(() => {
     console.log("🔍 Fetching users...");
     const token = localStorage.getItem('token');
-    if (!token) {
-      console.log("❌ No token, skipping users fetch");
-      return;
-    }
+    if (!token) return;
     
     apiCall('/api/users')
       .then(async res => {
         const data = await res.json();
-        console.log("📡 Users API response status:", res.status);
         if (res.ok && data.users) {
-          console.log("✅ Found users:", data.users);
           setAllUsers(data.users);
-        } else if (res.status === 401) {
-          console.log("⚠️ Users API returned 401 - token may be invalid");
-          setAllUsers([]);
-        } else if (data.error) {
-          console.log("❌ Error from server:", data.error);
         }
       })
-      .catch(err => console.error("❌ Fetch error:", err));
+      .catch(err => console.error("Fetch error:", err));
   }, []);
 
   // Load messages function
   const loadMessages = async (otherUserId) => {
-    console.log("🔍 loadMessages called for:", otherUserId);
-    console.log("🔑 Current token:", localStorage.getItem('token') ? "Exists" : "Missing");
-    
-    if (!otherUserId || !user) {
-      console.log("❌ Missing otherUserId or user");
-      return;
-    }
+    if (!otherUserId || !user) return;
 
     try {
       const res = await apiCall(`/api/load-messages/${otherUserId}`);
       const data = await res.json();
       
-      if (!data.messages) {
-        console.log("No messages returned");
-        return;
-      }
-      
-      console.log(`📩 Received ${data.messages.length} messages for conversation with ${otherUserId}`);
+      if (!data.messages) return;
       
       const formatted = data.messages.map(msg => ({
         id: msg.id,
@@ -327,7 +450,6 @@ function ChatApp({ user, onLogout }) {
       })).sort((a, b) => a.id - b.id);
       
       setMessages(prev => ({ ...prev, [otherUserId]: formatted }));
-      console.log(`📝 Stored ${formatted.length} messages for key ${otherUserId}`);
       
     } catch (err) {
       console.error("Error loading messages:", err);
@@ -336,29 +458,25 @@ function ChatApp({ user, onLogout }) {
 
   // Load messages when selected user changes
   useEffect(() => {
-    if (active.id && user) {
-      console.log("🔄 Active user changed, loading messages for:", active.id);
+    if (active.id && user && active.type === "dm") {
       loadMessages(active.id);
     }
   }, [active.id, user]);
 
   // Poll for new messages every 2 seconds
   useEffect(() => {
-    if (!active.id || !user) return;
+    if (!active.id || !user || active.type !== "dm") return;
     
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
     }
     
-    console.log("⏰ Starting polling for messages every 2 seconds");
     pollingRef.current = setInterval(() => {
-      console.log("🔄 Polling for new messages...");
       loadMessages(active.id);
     }, 2000);
     
     return () => {
       if (pollingRef.current) {
-        console.log("⏹️ Stopping polling");
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
@@ -372,7 +490,7 @@ function ChatApp({ user, onLogout }) {
 
   // Send message function
   const send = async (text) => {
-    if (!text.trim() || !active.id) return;
+    if ((!text.trim() && !active.id) || active.type !== "dm") return;
 
     const msg = {
       id: uid(),
@@ -382,7 +500,6 @@ function ChatApp({ user, onLogout }) {
       type: "text"
     };
 
-    // optimistic UI
     setMessages(prev => ({
       ...prev,
       [active.id]: [...(prev[active.id] ?? []), msg]
@@ -390,7 +507,6 @@ function ChatApp({ user, onLogout }) {
     setInput("");
 
     try {
-      console.log("📤 Sending message to:", active.id);
       await apiCall('/api/save-message', {
         method: 'POST',
         body: JSON.stringify({
@@ -399,12 +515,9 @@ function ChatApp({ user, onLogout }) {
           text: text.trim()
         })
       });
-      console.log("✅ Message saved, reloading messages...");
       await loadMessages(active.id);
-
     } catch (err) {
       console.error("Error saving message:", err);
-      // rollback if failed
       setMessages(prev => ({
         ...prev,
         [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
@@ -413,7 +526,6 @@ function ChatApp({ user, onLogout }) {
   };
 
   const handleLogout = () => {
-    console.log("🚪 Logging out...");
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
     }
@@ -422,11 +534,10 @@ function ChatApp({ user, onLogout }) {
   };
 
   const activeMessages = active.id ? (messages[active.id] ?? []) : [];
-  const activeName = active.name || (allUsers.find(u => u.id.toString() === active.id)?.username) || "Select a chat";
-
-  console.log(`🖥️ Rendering chat for ${activeName}, messages count: ${activeMessages.length}`);
-  console.log("👥 Current allUsers:", allUsers);
-  console.log("👤 Current user:", user);
+  const activeContact = active.type === "dm" 
+    ? CONTACTS.find(c => c.id === active.id) 
+    : GROUPS.find(g => g.id === active.id);
+  const activeName = activeContact?.name || "Select a chat";
 
   return (
     <div style={{ height: "100vh", display: "flex", background: "#080C12", fontFamily: "sans-serif", overflow: "hidden" }}>
@@ -437,26 +548,42 @@ function ChatApp({ user, onLogout }) {
           <p style={{ fontSize: 12, color: "#475569", margin: 0 }}>Welcome, {user.username}!</p>
         </div>
         
-        <div style={{ padding: "0 16px", borderBottom: "1px solid #1E293B", marginBottom: "10px" }}>
-          <h4 style={{ color: "#64748B", margin: "8px 0", fontSize: "12px" }}>ALL USERS</h4>
+        <div style={{ display: "flex", padding: "10px 12px", gap: 8 }}>
+          <button 
+            onClick={() => setSideTab("dm")} 
+            style={{ 
+              flex: 1, padding: "8px", 
+              background: sideTab === "dm" ? "#E8A838" : "#161B22", 
+              color: sideTab === "dm" ? "#0F172A" : "#E2E8F0", 
+              border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600 
+            }}>
+            Direct
+          </button>
+          <button 
+            onClick={() => setSideTab("groups")} 
+            style={{ 
+              flex: 1, padding: "8px", 
+              background: sideTab === "groups" ? "#E8A838" : "#161B22", 
+              color: sideTab === "groups" ? "#0F172A" : "#E2E8F0", 
+              border: "none", borderRadius: 8, cursor: "pointer", fontWeight: 600 
+            }}>
+            Groups
+          </button>
         </div>
         
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {allUsers.filter(u => u.username !== user.username).map(otherUser => {
-            const isActive = active.id === otherUser.id.toString();
-            const hasMessages = messages[otherUser.id.toString()] && messages[otherUser.id.toString()].length > 0;
-            const lastMsg = hasMessages 
-              ? messages[otherUser.id.toString()][messages[otherUser.id.toString()].length - 1] 
-              : null;
+          {sideTab === "dm" && CONTACTS.map(c => {
+            const isActive = active.id === c.id && active.type === "dm";
+            const hasMessages = messages[c.id] && messages[c.id].length > 0;
+            const lastMsg = hasMessages ? messages[c.id][messages[c.id].length - 1] : null;
             
             return (
               <div 
-                key={otherUser.id} 
+                key={c.id} 
                 onClick={() => {
-                  console.log(`🖱️ Clicked on user: ${otherUser.username} (ID: ${otherUser.id})`);
-                  setActive({ id: otherUser.id.toString(), type: "dm", name: otherUser.username });
-                  if (!messages[otherUser.id.toString()]) {
-                    setMessages(prev => ({ ...prev, [otherUser.id.toString()]: [] }));
+                  setActive({ id: c.id, type: "dm", name: c.name });
+                  if (!messages[c.id]) {
+                    setMessages(prev => ({ ...prev, [c.id]: [] }));
                   }
                 }}
                 style={{ 
@@ -468,24 +595,50 @@ function ChatApp({ user, onLogout }) {
                   cursor: "pointer",
                   borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
                 }}>
-                <Avatar label={otherUser.username.substring(0,2).toUpperCase()} color="#E8A838" size={40} />
+                <Avatar label={c.avatar} color={c.color} size={40} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{otherUser.username}</div>
+                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{c.name}</div>
                   <div style={{ fontSize: 11, color: "#64748B" }}>
-                    {lastMsg ? lastMsg.text.substring(0, 30) : "Click to start chatting"}
+                    {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : "Click to chat"}
                   </div>
                 </div>
-                {!hasMessages && (
-                  <span style={{ fontSize: 10, background: "#E8A838", color: "#0F172A", padding: "2px 6px", borderRadius: 10 }}>new</span>
-                )}
               </div>
             );
           })}
-          {allUsers.filter(u => u.username !== user.username).length === 0 && (
-            <div style={{ textAlign: "center", color: "#64748B", padding: "20px" }}>
-              No other users yet. Create another account in a different browser!
-            </div>
-          )}
+          
+          {sideTab === "groups" && GROUPS.map(g => {
+            const isActive = active.id === g.id && active.type === "group";
+            const hasMessages = messages[g.id] && messages[g.id].length > 0;
+            const lastMsg = hasMessages ? messages[g.id][messages[g.id].length - 1] : null;
+            
+            return (
+              <div 
+                key={g.id} 
+                onClick={() => {
+                  setActive({ id: g.id, type: "group", name: g.name });
+                  if (!messages[g.id]) {
+                    setMessages(prev => ({ ...prev, [g.id]: SEED_MESSAGES[g.id] || [] }));
+                  }
+                }}
+                style={{ 
+                  display: "flex", 
+                  alignItems: "center", 
+                  gap: 12, 
+                  padding: "12px 16px", 
+                  background: isActive ? "#1E293B" : "transparent", 
+                  cursor: "pointer",
+                  borderLeft: isActive ? "3px solid #E8A838" : "3px solid transparent"
+                }}>
+                <Avatar label={g.avatar} color={g.color} size={40} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontWeight: 600, color: "#E2E8F0" }}>{g.name}</div>
+                  <div style={{ fontSize: 11, color: "#64748B" }}>
+                    {lastMsg && lastMsg.type === "text" ? lastMsg.text.substring(0, 30) : `${g.members.length} members`}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
         
         <button 
@@ -515,20 +668,13 @@ function ChatApp({ user, onLogout }) {
         }}>
           <div>
             <h3 style={{ color: "#F8FAFC", margin: 0 }}>{activeName}</h3>
-            {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>Online</p>}
+            {active.id && <p style={{ fontSize: 11, color: "#64748B", margin: "4px 0 0" }}>
+              {active.type === "group" ? `${activeContact?.members?.length} members` : "Online"}
+            </p>}
           </div>
-          <div>
-            <button 
-              onClick={() => active.id && loadMessages(active.id)} 
-              style={{ background: "#161B22", color: "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 12px", cursor: "pointer", marginRight: "8px" }}
-              title="Refresh messages"
-            >
-              🔄
-            </button>
-            <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
-              ✦ AI Tools
-            </button>
-          </div>
+          <button onClick={() => setShowAI(!showAI)} style={{ background: showAI ? "#E8A838" : "#161B22", color: showAI ? "#0F172A" : "#E8A838", border: "1px solid #E8A838", borderRadius: 8, padding: "8px 16px", cursor: "pointer" }}>
+            ✦ AI Tools
+          </button>
         </div>
 
         <div style={{ 
@@ -542,7 +688,7 @@ function ChatApp({ user, onLogout }) {
           {!active.id ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
               <h2 style={{ color: "#E8A838" }}>Welcome to SmartChat!</h2>
-              <p>Click any user from the sidebar to start chatting.</p>
+              <p>Click a user from Direct or Groups to start chatting.</p>
             </div>
           ) : activeMessages.length === 0 ? (
             <div style={{ textAlign: "center", color: "#64748B", marginTop: "100px" }}>
@@ -550,10 +696,18 @@ function ChatApp({ user, onLogout }) {
             </div>
           ) : (
             activeMessages.map(msg => {
+              let contact;
+              if (active.type === "dm") {
+                contact = msg.from === "me" 
+                  ? { name: "You", avatar: "ME", color: "#E8A838" }
+                  : CONTACTS.find(c => c.id === msg.from) || { name: activeName, avatar: activeName.substring(0,2).toUpperCase(), color: "#888" };
+              } else {
+                contact = msg.from === "me" 
+                  ? { name: "You", avatar: "ME", color: "#E8A838" }
+                  : CONTACTS.find(c => c.id === msg.from) || { name: msg.from, avatar: msg.from.substring(0,2).toUpperCase(), color: "#888" };
+              }
               const isMine = msg.from === "me";
-              const contactName = isMine ? "You" : activeName;
-              const contactAvatar = isMine ? "ME" : activeName.substring(0,2).toUpperCase();
-              return <Bubble key={msg.id} msg={msg} contact={{ name: contactName, avatar: contactAvatar, color: isMine ? "#E8A838" : "#4FC3B0" }} isMine={isMine} />;
+              return <Bubble key={msg.id} msg={msg} contact={contact} isMine={isMine} />;
             })
           )}
           <div ref={bottomRef} />
@@ -565,18 +719,73 @@ function ChatApp({ user, onLogout }) {
           background: "#0D1117", 
           display: "flex", 
           gap: 12,
-          flexShrink: 0
+          flexShrink: 0,
+          alignItems: "flex-end"
         }}>
+          <input 
+            type="file" 
+            ref={fileInputRef}
+            style={{ display: "none" }}
+            onChange={handleFileUpload}
+            multiple
+          />
+          <input 
+            type="file" 
+            ref={imageInputRef}
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleImageUpload}
+            multiple
+          />
+          
+          <button 
+            onClick={() => fileInputRef.current?.click()}
+            style={{ 
+              background: "#161B22", 
+              border: "1px solid #2D3748", 
+              borderRadius: "20px", 
+              width: "40px", 
+              height: "40px",
+              cursor: "pointer",
+              fontSize: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+            title="Upload file"
+          >
+            📎
+          </button>
+          
+          <button 
+            onClick={() => imageInputRef.current?.click()}
+            style={{ 
+              background: "#161B22", 
+              border: "1px solid #2D3748", 
+              borderRadius: "20px", 
+              width: "40px", 
+              height: "40px",
+              cursor: "pointer",
+              fontSize: "18px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center"
+            }}
+            title="Upload image"
+          >
+            🖼️
+          </button>
+          
           <textarea 
             value={input} 
             onChange={e => setInput(e.target.value)} 
-            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && active.id) { e.preventDefault(); send(input); } }} 
-            placeholder={active.id ? "Type a message..." : "Select a user to start messaging"}
-            disabled={!active.id}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && active.id && active.type === "dm") { e.preventDefault(); send(input); } }} 
+            placeholder={active.id && active.type === "dm" ? "Type a message..." : "Select a direct chat to message"}
+            disabled={!active.id || active.type !== "dm"}
             rows={1} 
-            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: active.id ? 1 : 0.5 }} 
+            style={{ flex: 1, background: "#161B22", border: "1px solid #2D3748", borderRadius: 20, color: "#E2E8F0", padding: "12px 16px", resize: "none", fontFamily: "sans-serif", fontSize: 14, opacity: (active.id && active.type === "dm") ? 1 : 0.5 }} 
           />
-          <button onClick={() => send(input)} disabled={!input.trim() || !active.id} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id) ? 0.5 : 1 }}>
+          <button onClick={() => send(input)} disabled={!input.trim() || !active.id || active.type !== "dm"} style={{ background: "#E8A838", border: "none", borderRadius: 20, width: 44, height: 44, fontSize: 18, cursor: "pointer", opacity: (!input.trim() || !active.id || active.type !== "dm") ? 0.5 : 1 }}>
             ➤
           </button>
         </div>
@@ -594,24 +803,18 @@ export default function SmartChat() {
 
   useEffect(() => {
     const token = localStorage.getItem('token');
-    console.log("🔑 Token from localStorage:", token ? `Found (${token.substring(0, 20)}...)` : "Not found");
     
     if (!token) {
       setLoading(false);
       return;
     }
     
-    console.log("🔍 Checking session...");
     apiCall('/api/me')
       .then(async res => {
         const data = await res.json();
-        console.log("📡 Session response status:", res.status);
-        console.log("📡 Session data:", data);
         if (res.ok && data.user) {
-          console.log("✅ Session valid for user:", data.user.username);
           setUser(data.user);
         } else {
-          console.log("❌ Session invalid, clearing token");
           localStorage.removeItem('token');
         }
       })
