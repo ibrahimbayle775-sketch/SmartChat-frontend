@@ -348,13 +348,32 @@ function ChatApp({ user, onLogout }) {
       const data = await res.json();
       
       if (data.messages) {
-        const formatted = data.messages.map(msg => ({
-          id: msg.id,
-          from: msg.sender === user.id.toString() ? "me" : msg.sender,
-          text: msg.text,
-          time: msg.timestamp,
-          type: "text"
-        }));
+        const formatted = data.messages.map(msg => {
+          let parsedMsg = {
+            id: msg.id,
+            from: msg.sender === user.id.toString() ? "me" : msg.sender,
+            time: msg.timestamp,
+            type: "text"
+          };
+          
+          // Parse multimedia messages
+          if (msg.text && msg.text.startsWith('[IMAGE:')) {
+            const url = msg.text.substring(7, msg.text.length - 1);
+            parsedMsg.type = "image";
+            parsedMsg.src = url;
+            parsedMsg.text = "";
+          } else if (msg.text && msg.text.startsWith('[FILE:')) {
+            const parts = msg.text.substring(6, msg.text.length - 1).split(':');
+            parsedMsg.type = "file";
+            parsedMsg.filename = parts[0];
+            parsedMsg.url = parts[1];
+            parsedMsg.text = "";
+          } else {
+            parsedMsg.text = msg.text;
+          }
+          
+          return parsedMsg;
+        });
         setMessages(prev => ({ ...prev, [`group_${groupId}`]: formatted }));
         console.log(`✅ Loaded ${formatted.length} messages for group ${groupId}`);
       }
@@ -422,22 +441,89 @@ function ChatApp({ user, onLogout }) {
     }
   };
 
-  // File upload handlers
+  // Send media (images/files) to groups
+  const sendGroupMedia = async (mediaType, mediaData) => {
+    if (!active.id || active.type !== "group") return;
+
+    const msg = {
+      id: uid(),
+      from: "me",
+      time: now(),
+      type: mediaType
+    };
+
+    if (mediaType === "image") {
+      msg.src = mediaData;
+      msg.text = "";
+    } else if (mediaType === "file") {
+      msg.url = mediaData.url;
+      msg.filename = mediaData.name;
+      msg.text = "";
+    }
+
+    // Optimistically add to UI
+    setMessages(prev => ({
+      ...prev,
+      [active.id]: [...(prev[active.id] ?? []), msg]
+    }));
+
+    try {
+      const groupId = active.id.split('_')[1];
+      
+      let textContent = "";
+      if (mediaType === "image") {
+        textContent = `[IMAGE:${mediaData}]`;
+      } else if (mediaType === "file") {
+        textContent = `[FILE:${mediaData.name}:${mediaData.url}]`;
+      }
+      
+      const response = await apiCall(`/api/groups/${groupId}/messages`, {
+        method: 'POST',
+        body: JSON.stringify({ text: textContent })
+      });
+      
+      const data = await response.json();
+      console.log("Group media response:", data);
+      
+      // Reload group messages
+      await loadGroupMessages(groupId);
+      
+    } catch (err) {
+      console.error("Error sending group media:", err);
+      // Rollback if failed
+      setMessages(prev => ({
+        ...prev,
+        [active.id]: (prev[active.id] ?? []).filter(m => m.id !== msg.id)
+      }));
+      alert("Failed to send media. Please try again.");
+    }
+  };
+
+  // File upload handler - works for both direct and group chats
   const handleFileUpload = (e) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
       const fileUrl = URL.createObjectURL(file);
-      send("", "file", { name: file.name, url: fileUrl });
+      if (active.type === "group") {
+        sendGroupMedia("file", { name: file.name, url: fileUrl });
+      } else {
+        send("", "file", { name: file.name, url: fileUrl });
+      }
     });
     e.target.value = "";
   };
 
+  // Image upload handler - works for both direct and group chats
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files);
     files.forEach(file => {
       const reader = new FileReader();
       reader.onload = (ev) => {
-        send("", "image", ev.target.result);
+        if (active.type === "group") {
+          sendGroupMedia("image", ev.target.result);
+        } else {
+          send("", "image", ev.target.result);
+        }
       };
       reader.readAsDataURL(file);
     });
@@ -522,7 +608,7 @@ function ChatApp({ user, onLogout }) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, active.id]);
 
-  // Send message function - works for both direct and group messages
+  // Send message function - works for both direct and group text messages
   const send = async (text, msgType = "text", fileData = null) => {
     if (!text.trim() && msgType === "text") return;
     if (!active.id) return;
@@ -581,7 +667,7 @@ function ChatApp({ user, onLogout }) {
         await loadMessages(active.id);
         
       } else if (active.type === "group") {
-        // Group message
+        // Group text message
         const groupId = active.id.split('_')[1];
         console.log(`📤 Sending group message to group ${groupId}: ${text}`);
         
